@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}Payments{% endblock %}
+{% block page_title %}Payments{% endblock %}
+{% block page_crumb %}Track completed and failed student payments{% endblock %}
+
+{% block content %}
+
+<div class="stat-grid">
+  <div class="stat-card">
+    <div class="stat-top"><div class="stat-icon" style="background:var(--green-600);"><i class="fa-solid fa-circle-check"></i></div></div>
+    <div class="stat-value">₹{{ '{:,}'.format(total_paid) }}</div>
+    <div class="stat-label">Total Paid</div>
+  </div>
+  {% if not student_view %}<div class="stat-card">
+    <div class="stat-top"><div class="stat-icon" style="background:var(--red-600);"><i class="fa-solid fa-circle-xmark"></i></div></div>
+    <div class="stat-value">₹{{ '{:,}'.format(total_failed) }}</div>
+    <div class="stat-label">Total Failed Payment</div>
+  </div>{% endif %}
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h3><i class="fa-solid fa-wallet"></i>&nbsp; All Payments <span class="badge badge-blue">{{ payments|length }}</span></h3>
+    {% if session.get('user_role') == 'admin' %}<button type="button" class="btn btn-primary" onclick="openModal('recordPaymentModal')"><i class="fa-solid fa-plus"></i> Record Student Payment</button>{% endif %}
+  </div>
+
+  <div class="toolbar">
+    <div class="search-box">
+      <i class="fa-solid fa-magnifying-glass" style="color:var(--gray-500)"></i>
+      <input type="text" placeholder="Search by invoice or student..." data-search-for="paymentsTable" oninput="applyFilters('paymentsTable')">
+    </div>
+    <select class="filter-select" data-filter-for="paymentsTable" data-field="method" onchange="applyFilters('paymentsTable')">
+      <option value="">All Methods</option>
+      <option value="UPI">UPI</option>
+      <option value="Card">Card</option>
+      <option value="Cash">Cash</option>
+      <option value="Bank Transfer">Bank Transfer</option>
+      <option value="Cheque">Cheque</option>
+      <option value="Other">Other</option>
+      <option value="Razorpay">Razorpay</option>
+    </select>
+    <select class="filter-select" data-filter-for="paymentsTable" data-field="status" onchange="applyFilters('paymentsTable')">
+      <option value="">All Status</option>
+      <option value="Paid">Paid</option>
+            {% if not student_view %}<option value="Failed">Failed</option>{% endif %}
+    </select>
+  </div>
+
+  <div class="table-wrap">
+    <table class="data-table" id="paymentsTable">
+      <thead>
+        <tr><th>Invoice</th><th>Student</th><th>Amount</th><th>Date</th><th>Method</th><th>Status</th><th>Actions</th></tr>
+      </thead>
+      <tbody>
+        {% for p in payments %}
+        <tr data-row data-id="{{ p.id }}" data-entity="payments" data-method="{{ p.method }}" data-status="{{ p.status }}">
+          <td class="cell-strong">{{ p.invoice_no }}</td>
+          <td>{{ student_name(p.student_id) }}</td>
+          <td>₹{{ '{:,}'.format(p.amount) }}{% if p.razorpay_payment_id %}<div class="cell-muted" style="font-size:11px;">{{ p.razorpay_payment_id }}</div>{% endif %}</td>
+          <td>{{ p.date }}</td>
+          <td>{{ p.method }}</td>
+          <td><span class="badge {{ 'badge-green' if p.status|lower=='paid' else 'badge-red' }}">{{ p.status }}</span></td>
+          <td><span class="cell-muted">{{ 'Personal payment' if student_view else ('Manually recorded' if p.source == 'Manual' else 'Gateway synced') }}</span></td>
+        </tr>
+        {% endfor %}
+        <tr class="empty-row" style="display:none;"><td colspan="7">No payments match your search.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% if session.get('user_role') == 'admin' %}
+<div class="modal-overlay" id="recordPaymentModal">
+  <div class="modal-box">
+    <div class="modal-header"><h3><i class="fa-solid fa-wallet"></i> Record Student Payment</h3><button class="modal-close" type="button" onclick="closeModal('recordPaymentModal')" aria-label="Close"><i class="fa-solid fa-xmark"></i></button></div>
+    <form method="post" action="{{ url_for('record_student_payment') }}">
+      <div class="modal-body"><div class="form-grid">
+        <div class="full form-group"><label>Student</label><select class="form-control" name="student_id" required><option value="">Select student</option>{% for st in students %}<option value="{{ st.id }}">{{ st.name }} — {{ st.email }}</option>{% endfor %}</select></div>
+        <div class="form-group"><label>Amount (₹)</label><input class="form-control" type="number" name="amount" min="1" max="100000000" step="1" required placeholder="Enter amount"></div>
+        <div class="form-group"><label>Payment date</label><input class="form-control" type="date" name="date" value="{{ today_date }}" max="{{ today_date }}" required></div>
+        <div class="full form-group"><label>Payment method</label><select class="form-control" name="method" required><option value="">Select method</option><option>Cash</option><option>UPI</option><option>Card</option><option>Bank Transfer</option><option>Cheque</option><option>Other</option></select></div>
+        <div class="full form-help">This records an offline payment as Paid and creates an invoice reference. Online gateway payments continue to sync automatically.</div>
+      </div></div>
+      <div class="modal-footer"><button type="button" class="btn btn-outline" onclick="closeModal('recordPaymentModal')">Cancel</button><button type="submit" class="btn btn-primary"><i class="fa-solid fa-floppy-disk"></i> Save Payment</button></div>
+    </form>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+

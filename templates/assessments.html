@@ -1,0 +1,216 @@
+{% extends "base.html" %}
+{% block title %}Assessments{% endblock %}
+{% block page_title %}Assessments{% endblock %}
+{% block page_crumb %}Create and manage quizzes, exams, assignments and projects{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-header">
+    <h3><i class="fa-solid fa-file-pen"></i>&nbsp; All Assessments <span class="badge badge-blue">{{ assessments|length }}</span></h3>
+    <div class="page-actions">
+      {% if not student_view %}<button class="btn btn-primary" onclick="openAddAssessmentModal()"><i class="fa-solid fa-plus"></i> Add Assessment</button>{% endif %}
+    </div>
+  </div>
+
+  <div class="toolbar">
+    <div class="search-box">
+      <i class="fa-solid fa-magnifying-glass" style="color:var(--gray-500)"></i>
+      <input type="text" placeholder="Search assessments..." data-search-for="assessmentsTable" oninput="applyFilters('assessmentsTable')">
+    </div>
+    <select class="filter-select" data-filter-for="assessmentsTable" data-field="type" onchange="applyFilters('assessmentsTable')">
+      <option value="">All Types</option>
+      <option value="Quiz">Quiz</option>
+      <option value="Exam">Exam</option>
+      <option value="Assignment">Assignment</option>
+      <option value="Project">Project</option>
+    </select>
+    <select class="filter-select" data-filter-for="assessmentsTable" data-field="status" onchange="applyFilters('assessmentsTable')">
+      <option value="">All Status</option>
+      <option value="Scheduled">Scheduled</option>
+      <option value="Completed">Completed</option>
+    </select>
+  </div>
+
+  <div class="table-wrap">
+    <table class="data-table" id="assessmentsTable">
+      <thead>
+        <tr><th>Title</th><th>Type</th><th>Course</th><th>Batch</th><th>Date</th><th>Max Marks</th><th>Status</th><th>Evaluation</th><th>Actions</th></tr>
+      </thead>
+      <tbody>
+        {% for a in assessments %}
+        <tr data-row data-id="{{ a.id }}" data-entity="assessments" data-type="{{ a.type }}" data-status="{{ a.status }}">
+          <td class="cell-strong">{{ a.title }}</td>
+          <td><span class="badge badge-blue">{{ a.type }}</span></td>
+          <td>{{ course_name(a.course_id) }}</td>
+          <td>{{ batch_name(a.batch_id) }}</td>
+          <td>{{ a.date }}</td>
+          <td>{{ a.max_marks }}</td>
+          <td><span class="badge {{ 'badge-green' if a.status=='Completed' else 'badge-amber' }}">{{ a.status }}</span></td>
+          <td><span class="cell-muted">{% if a.questions %}Auto-evaluated in My Learning{% else %}Questions not configured{% endif %}</span></td>
+          <td>{% if not student_view %}
+            <div class="row-actions"><button class="action-btn edit" title="Edit" onclick='openEditAssessmentModal({{ a|tojson }})'><i class="fa-solid fa-pen"></i></button><button class="action-btn delete" title="Delete" onclick="confirmDelete('assessments', {{ a.id }}, '{{ a.title|e }}')"><i class="fa-solid fa-trash"></i></button></div>
+          {% else %}<span class="cell-muted">Personal assessment</span>{% endif %}</td>
+        </tr>
+        {% endfor %}
+        <tr class="empty-row" style="display:none;"><td colspan="9">No assessments match your search.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% if not student_view %}<div class="modal-overlay" id="assessmentModal">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3 id="assessmentModalTitle">Add Assessment</h3>
+      <button class="modal-close" onclick="closeModal('assessmentModal')"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <form id="assessmentForm">
+      <div class="modal-body">
+        <div class="form-grid">
+          <div class="full form-group">
+            <label>Title</label>
+            <input type="text" name="title" class="form-control" required>
+          </div>
+          <div class="full form-group"><label>Form description / instructions</label><textarea name="description" class="form-control" rows="3" placeholder="Explain the quiz instructions to students"></textarea></div>
+          <div class="form-group"><label>Time limit (minutes, optional)</label><input type="number" name="time_limit_minutes" class="form-control" min="1" max="300" placeholder="No time limit"></div>
+          <div class="form-group">
+            <label>Type</label>
+            <select name="type" class="form-control" required>
+              <option value="Quiz">Quiz</option>
+              <option value="Exam">Exam</option>
+              <option value="Assignment">Assignment</option>
+              <option value="Project">Project</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Course</label>
+            <select name="course_id" class="form-control" required>
+              {% for c in courses %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Batch</label>
+            <select name="batch_id" class="form-control" required>
+              {% for b in batches %}<option value="{{ b.id }}">{{ b.name }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Date</label>
+            <input type="date" name="date" class="form-control" required>
+          </div>
+          <div class="form-group">
+            <label>Max Marks</label>
+            <input type="number" name="max_marks" class="form-control" min="1" required>
+          </div>
+          <div class="full form-group">
+            <label>Quiz Builder — Google Forms style</label><p class="cell-muted">Add different question types, question images, reference links and file attachments. Image/file attachments are limited to 1.5 MB each.</p>
+            <div id="quizBuilder" style="border:1px solid var(--gray-200);border-radius:10px;padding:12px;margin-bottom:10px"></div>
+            <button type="button" class="btn btn-outline" onclick="addQuizQuestion()"><i class="fa-solid fa-plus"></i> Add question</button>
+            <input type="hidden" name="questions_text" id="questionsText">
+            <small>Add a question, enter 2–4 options, and select the correct answer. Questions are automatically graded.</small>
+          </div>
+          <div class="form-group"><label>Passing Marks</label><input type="number" name="passing_marks" class="form-control" min="0" value="0"></div>
+          <div class="form-group"><label>Deadline</label><input type="date" name="deadline" class="form-control"></div>
+          <div class="full form-group">
+            <label>Status</label>
+            <select name="status" class="form-control" required>
+              <option value="Scheduled">Scheduled</option>
+              <option value="Completed">Completed</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline" onclick="closeModal('assessmentModal')">Cancel</button>
+        <button type="submit" class="btn btn-primary"><i class="fa-solid fa-floppy-disk"></i> Save Assessment</button>
+      </div>
+    </form>
+  </div>
+</div>{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if not student_view %}<script>
+var assessmentEditId = null;
+let quizQuestionCount = 0;
+const QB_TYPES = [
+ ['multiple_choice','Multiple choice'],['checkboxes','Checkboxes'],['short_answer','Short answer'],['paragraph','Paragraph'],['dropdown','Dropdown'],['true_false','True / False'],['date','Date'],['file_upload','File upload']
+];
+function readQBFile(file, callback){
+  if(!file){callback('');return;}
+  if(file.size > 1.5*1024*1024){alert('Each image/attachment must be 1.5 MB or smaller.');return;}
+  const reader=new FileReader();reader.onload=()=>callback(String(reader.result||''));reader.readAsDataURL(file);
+}
+function addQuizQuestion(questionData={}){
+  const data=typeof questionData==='string'?{question:questionData}:questionData||{};
+  const id=++quizQuestionCount; const box=document.createElement('div'); box.className='quiz-question-card';box.dataset.qid=id;
+  box.style.cssText='border:1px solid var(--gray-200);border-radius:12px;padding:16px;margin:14px 0;background:var(--surface,#fff)';
+  const type=data.type||'multiple_choice';
+  box.innerHTML=`<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><strong style="flex:1">Question ${id}</strong><select class="form-control qb-type" style="max-width:220px">${QB_TYPES.map(([v,l])=>`<option value="${v}" ${type===v?'selected':''}>${l}</option>`).join('')}</select><button type="button" class="btn btn-outline btn-sm qb-remove">Remove</button></div>
+  <textarea class="form-control qb-question" rows="2" placeholder="Question text" required style="margin:12px 0">${escapeHtmlQ(data.question||'')}</textarea>
+  <input class="form-control qb-help" placeholder="Description / help text (optional)" value="${escapeHtmlQ(data.help_text||'')}" style="margin-bottom:10px">
+  <div class="qb-media" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin:10px 0">
+   <label>Question image (optional)<input type="file" class="form-control qb-image-file" accept="image/*"><small class="cell-muted qb-image-status">${data.image_data?'Image attached':'Up to 1.5 MB'}</small></label>
+   <label>Reference link (optional)<input type="url" class="form-control qb-link" placeholder="https://..." value="${escapeHtmlQ(data.link_url||'')}"></label>
+   <label>Attach file (optional)<input type="file" class="form-control qb-attachment-file"><small class="cell-muted qb-file-status">${escapeHtmlQ(data.attachment_name||'Up to 1.5 MB')}</small></label>
+  </div>
+  <div class="qb-answer-area"></div>
+  <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:12px"><label>Marks <input type="number" class="form-control qb-marks" min="0.5" step="0.5" value="${Number(data.marks)||1}" style="width:100px;display:inline-block"></label><label><input type="checkbox" class="qb-required" ${data.required!==false?'checked':''}> Required</label></div>
+  <input type="hidden" class="qb-image-data" value="${escapeHtmlQ(data.image_data||'')}"><input type="hidden" class="qb-attachment-data" value="${escapeHtmlQ(data.attachment_data||'')}"><input type="hidden" class="qb-attachment-name" value="${escapeHtmlQ(data.attachment_name||'')}"><input type="hidden" class="qb-attachment-mime" value="${escapeHtmlQ(data.attachment_mime||'')}">`;
+  const builder=document.getElementById('quizBuilder'); builder.appendChild(box);
+  box.querySelector('.qb-remove').onclick=()=>{box.remove();renumberQuestions();};
+  box.querySelector('.qb-type').onchange=()=>renderQBAnswerArea(box,{});
+  box.querySelector('.qb-image-file').onchange=e=>readQBFile(e.target.files[0],v=>{box.querySelector('.qb-image-data').value=v;box.querySelector('.qb-image-status').textContent=v?'Image attached':'No image';});
+  box.querySelector('.qb-attachment-file').onchange=e=>{const f=e.target.files[0];if(!f)return;readQBFile(f,v=>{if(v){box.querySelector('.qb-attachment-data').value=v;box.querySelector('.qb-attachment-name').value=f.name;box.querySelector('.qb-attachment-mime').value=f.type||'application/octet-stream';box.querySelector('.qb-file-status').textContent=f.name;}});};
+  renderQBAnswerArea(box,data); renumberQuestions();
+}
+function renderQBAnswerArea(box,data={}){
+ const type=box.querySelector('.qb-type').value, area=box.querySelector('.qb-answer-area'); area.innerHTML='';
+ const opts=Array.isArray(data.options)&&data.options.length?data.options:(type==='true_false'?['True','False']:['','']);
+ if(['multiple_choice','checkboxes','dropdown','true_false'].includes(type)){
+   const label=document.createElement('div');label.innerHTML='<strong>Answer options</strong><small class="cell-muted"> Select correct answer(s) below.</small>';area.appendChild(label);
+   const rows=document.createElement('div');rows.className='qb-options';area.appendChild(rows);
+   const corrects=Array.isArray(data.correct_indices)?data.correct_indices.map(Number):[Number(data.correct_index||0)];
+   opts.forEach((value,i)=>appendQBOption(rows,i,value,corrects.includes(i),type==='checkboxes'));
+   const add=document.createElement('button');add.type='button';add.className='btn btn-outline btn-sm';add.style.marginTop='8px';add.textContent='Add option';add.onclick=()=>{if(rows.children.length>=10)return alert('Maximum 10 options.');appendQBOption(rows,rows.children.length,'',false,type==='checkboxes');};area.appendChild(add);
+ }else if(type==='short_answer'||type==='date'){
+   area.innerHTML=`<label><strong>Accepted answer / answer key</strong><input class="form-control qb-correct-answer" placeholder="${type==='date'?'YYYY-MM-DD':'Enter expected answer'}" value="${escapeHtmlQ(data.correct_answer||'')}" style="margin-top:6px"></label><small class="cell-muted">${type==='short_answer'?'Short answers are auto-graded with a case-insensitive exact match.':'Date answers are matched exactly.'}</small>`;
+ }else if(type==='paragraph'){
+   area.innerHTML='<p class="cell-muted">Students will write a long response. Trainer/institute must review and grade this answer manually.</p>';
+ }else if(type==='file_upload'){
+   area.innerHTML='<p class="cell-muted">Students can attach a file in their response. Trainer/institute must review and grade it manually.</p>';
+ }
+}
+function appendQBOption(rows,i,value,correct,multiple){
+ const row=document.createElement('div');row.style.cssText='display:flex;gap:8px;align-items:center;margin:7px 0';
+ row.innerHTML=`<input type="${multiple?'checkbox':'radio'}" class="qb-correct" name="correct-${rows.closest('.quiz-question-card').dataset.qid}" value="${i}" ${correct?'checked':''} aria-label="Correct answer"><input class="form-control qb-option" placeholder="Option ${i+1}" value="${escapeHtmlQ(value)}" required><button type="button" class="btn btn-outline btn-sm" aria-label="Remove option">×</button>`;
+ row.querySelector('button').onclick=()=>{row.remove();[...rows.children].forEach((r,j)=>{r.querySelector('.qb-correct').value=j;r.querySelector('.qb-option').placeholder='Option '+(j+1)});};rows.appendChild(row);
+}
+function escapeHtmlQ(v){return String(v??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#39;');}
+function renumberQuestions(){document.querySelectorAll('.quiz-question-card').forEach((q,i)=>q.querySelector('strong').textContent='Question '+(i+1));}
+function loadQuizBuilder(questions){document.getElementById('quizBuilder').innerHTML='';quizQuestionCount=0;(questions||[]).forEach(q=>addQuizQuestion(q));}
+function serializeQuizBuilder(){
+ const result=[];
+ for(const card of document.querySelectorAll('.quiz-question-card')){
+  const type=card.querySelector('.qb-type').value, q={question:card.querySelector('.qb-question').value.trim(),type,help_text:card.querySelector('.qb-help').value.trim(),link_url:card.querySelector('.qb-link').value.trim(),image_data:card.querySelector('.qb-image-data').value,attachment_data:card.querySelector('.qb-attachment-data').value,attachment_name:card.querySelector('.qb-attachment-name').value,attachment_mime:card.querySelector('.qb-attachment-mime').value,marks:Number(card.querySelector('.qb-marks').value),required:card.querySelector('.qb-required').checked};
+  if(!q.question||!Number.isFinite(q.marks)||q.marks<=0){alert('Each question needs text and positive marks.');return null;}
+  if(['multiple_choice','checkboxes','dropdown','true_false'].includes(type)){
+   q.options=[...card.querySelectorAll('.qb-option')].map(x=>x.value.trim());
+   const checked=[...card.querySelectorAll('.qb-correct:checked')].map(x=>Number(x.value));
+   if(q.options.length<(type==='true_false'?2:2)||q.options.some(x=>!x)){alert('Each choice question needs at least two completed options.');return null;}
+   if(!checked.length){alert('Select the correct answer for every choice question.');return null;}
+   if(type==='checkboxes')q.correct_indices=checked;else q.correct_index=checked[0];
+  } else if(type==='short_answer'||type==='date'){
+   q.correct_answer=card.querySelector('.qb-correct-answer').value.trim();if(!q.correct_answer){alert('Add an answer key for short answer/date questions.');return null;}
+  }
+  result.push(q);
+ }
+ if(!result.length){alert('Add at least one question.');return null;}
+ return JSON.stringify(result);
+}
+function openAddAssessmentModal(){assessmentEditId=null;document.getElementById('assessmentModalTitle').innerText='Create assessment';document.getElementById('assessmentForm').reset();loadQuizBuilder([]);addQuizQuestion();openModal('assessmentModal');}
+function openEditAssessmentModal(a){assessmentEditId=a.id;document.getElementById('assessmentModalTitle').innerText='Edit assessment';document.getElementById('assessmentForm').reset();prefillForm('assessmentForm',a);const deadline=document.querySelector('#assessmentForm [name="deadline"]');if(deadline)deadline.value=a.deadline||a.date||'';loadQuizBuilder(a.questions||[]);openModal('assessmentModal');}
+document.getElementById('assessmentForm').addEventListener('submit',function(e){e.preventDefault();const serialized=serializeQuizBuilder();if(serialized===null)return;document.getElementById('questionsText').value=serialized;submitEntityForm('assessments',assessmentEditId?'PUT':'POST',this,assessmentEditId);});
+if(new URLSearchParams(location.search).get('open')==='add'){setTimeout(openAddAssessmentModal,150);}
+</script>{% endif %}
+{% endblock %}

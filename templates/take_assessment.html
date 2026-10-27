@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Take Assessment{% endblock %}
+{% block page_title %}Take Assessment{% endblock %}
+{% block page_crumb %}{{ assessment.title }} · Deadline {{ assessment.deadline or assessment.date or 'Not set' }}{% endblock %}
+{% block content %}
+<div class="card"><div class="card-header"><div><h3>{{ assessment.title }}</h3><p class="cell-muted">{{ assessment.type }} · Maximum {{ assessment.max_marks }} marks · Deadline {{ assessment.deadline or assessment.date or 'Not set' }}</p></div></div>
+<div class="card-body">
+{% if assessment.description %}<p style="white-space:pre-wrap">{{ assessment.description }}</p>{% endif %}
+{% if assessment.time_limit_minutes %}<div class="live-attendance-notice" id="quizTimer" data-minutes="{{ assessment.time_limit_minutes }}"><strong>Time remaining: <span id="quizTimerValue">{{ assessment.time_limit_minutes }}:00</span></strong></div>{% endif %}
+{% if existing %}<div class="live-attendance-notice"><strong>Latest score: {{ existing.marks }}/{{ assessment.max_marks }}</strong><br>Your submission has been saved. You may submit again before the deadline; the latest score will be shown.</div>{% endif %}
+{% if expired %}<p class="flash-msg error">The deadline has passed. Submissions are closed.</p>{% else %}
+<form id="quizForm">
+{% for q in questions %}{% set q_index = loop.index0 %}<section style="border:1px solid var(--gray-200);border-radius:12px;padding:18px;margin:14px 0">
+<h4>{{ loop.index }}. {{ q.question }} {% if q.required %}<span style="color:#d33">*</span>{% endif %}</h4>
+{% if q.help_text %}<p class="cell-muted">{{ q.help_text }}</p>{% endif %}
+{% if q.image_data %}<img src="{{ q.image_data }}" alt="Question image" style="display:block;max-width:100%;max-height:420px;object-fit:contain;border-radius:8px;margin:12px 0">{% endif %}
+{% if q.link_url %}<p><a href="{{ q.link_url }}" target="_blank" rel="noopener noreferrer"><i class="fa-solid fa-arrow-up-right-from-square"></i> Open reference link</a></p>{% endif %}
+{% if q.attachment_data %}<p><a href="{{ q.attachment_data }}" download="{{ q.attachment_name or 'question-attachment' }}"><i class="fa-solid fa-paperclip"></i> {{ q.attachment_name or 'Download attachment' }}</a></p>{% endif %}
+{% set qtype=q.type or 'multiple_choice' %}
+{% if qtype in ['multiple_choice','true_false'] %}
+ {% for option in q.options %}<label style="display:flex;gap:10px;align-items:center;padding:7px 0"><input type="radio" name="q{{ q_index }}" value="{{ loop.index0 }}" {% if q.required %}required{% endif %}> {{ option }}</label>{% endfor %}
+{% elif qtype=='dropdown' %}<select class="form-control" name="q{{ q_index }}" {% if q.required %}required{% endif %}><option value="">Select an answer</option>{% for option in q.options %}<option value="{{ loop.index0 }}">{{ option }}</option>{% endfor %}</select>
+{% elif qtype=='checkboxes' %}{% for option in q.options %}<label style="display:flex;gap:10px;align-items:center;padding:7px 0"><input type="checkbox" name="q{{ q_index }}" value="{{ loop.index0 }}"> {{ option }}</label>{% endfor %}
+{% elif qtype=='short_answer' %}<input class="form-control" name="q{{ q_index }}" placeholder="Your answer" {% if q.required %}required{% endif %}>
+{% elif qtype=='paragraph' %}<textarea class="form-control" name="q{{ q_index }}" rows="5" placeholder="Write your answer" {% if q.required %}required{% endif %}></textarea>
+{% elif qtype=='date' %}<input type="date" class="form-control" name="q{{ q_index }}" {% if q.required %}required{% endif %}>
+{% elif qtype=='file_upload' %}<input type="file" class="form-control" name="q{{ q_index }}" {% if q.required %}required{% endif %}><small class="cell-muted">Maximum file size: 2 MB. This answer will be reviewed by your trainer.</small>
+{% endif %}
+</section>{% endfor %}
+<button class="btn btn-primary" type="submit">Submit assessment</button>
+</form><div id="quizResult" style="margin-top:16px"></div>
+{% endif %}
+<a class="btn btn-outline" style="margin-top:16px" href="{{ url_for('assessments_page') }}">Back to Assessments</a>
+</div></div>
+{% endblock %}
+{% block scripts %}
+{% if not expired %}<script>
+const quizQuestions = {{ questions|tojson }};
+function escapeQuizHtml(value){return String(value??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));}
+function fileToDataUrl(file){return new Promise((resolve,reject)=>{if(file.size>2*1024*1024){reject(new Error('Each submitted file must be 2 MB or smaller.'));return;}const reader=new FileReader();reader.onload=()=>resolve(String(reader.result||''));reader.onerror=()=>reject(new Error('Could not read the selected file.'));reader.readAsDataURL(file);});}
+const timerBox=document.getElementById('quizTimer');
+if(timerBox){let remaining=Math.max(1,Number(timerBox.dataset.minutes)||1)*60;const timerValue=document.getElementById('quizTimerValue');const tick=()=>{const m=Math.floor(remaining/60),s=remaining%60;timerValue.textContent=m+':'+String(s).padStart(2,'0');if(remaining<=0){clearInterval(timerHandle);timerBox.innerHTML='<strong>Time is up — submitting your answers…</strong>';document.getElementById('quizForm').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));return;}remaining--;};tick();const timerHandle=setInterval(tick,1000);}
+document.getElementById('quizForm').addEventListener('submit', async function(e){
+ e.preventDefault();const answers={};
+ try{
+  for(let i=0;i<quizQuestions.length;i++){
+   const q=quizQuestions[i], type=q.type||'multiple_choice', controls=[...this.querySelectorAll(`[name="q${i}"]`)];
+   if(type==='checkboxes')answers[String(i)]=controls.filter(el=>el.checked).map(el=>el.value);
+   else if(type==='file_upload'){const f=controls[0]?.files?.[0];answers[String(i)]=f?{name:f.name,mime:f.type||'application/octet-stream',data:await fileToDataUrl(f)}:'';}
+   else if(type==='multiple_choice'||type==='true_false')answers[String(i)]=controls.find(el=>el.checked)?.value??'';
+   else answers[String(i)]=controls[0]?.value??'';
+  }
+ }catch(err){alert(err.message);return;}
+ const response=await fetch('{{ url_for("submit_assessment", assessment_id=assessment.id) }}',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({answers})});
+ const data=await response.json();const result=document.getElementById('quizResult');
+ if(!response.ok){result.innerHTML='<p class="flash-msg error"></p>';result.firstChild.textContent=data.error||'Could not submit assessment';return;}
+ let review='<div class="live-attendance-notice"><strong>Score: '+data.marks+' / '+data.max_marks+'</strong><br>Correct answers: '+data.correct_answers+' / '+data.total_questions+(data.manual_review_pending?'<br>Some responses need trainer review. Your final result may be updated after grading.':'')+'</div><h3>Answer review</h3><ol>';
+ (data.review||[]).forEach(item=>{review+='<li style="margin:10px 0"><strong>'+escapeQuizHtml(item.question)+'</strong><br>Your answer: '+escapeQuizHtml(item.chosen_answer)+'<br>Correct answer: '+escapeQuizHtml(item.correct_answer)+' <span class="badge '+(item.manual_review?'badge-amber':(item.correct?'badge-green':'badge-amber'))+'">'+(item.manual_review?'Pending review':(item.correct?'Correct':'Review'))+'</span></li>';});
+ result.innerHTML=review+'</ol>';this.querySelectorAll('input,button,select,textarea').forEach(el=>el.disabled=true);
+});
+</script>{% endif %}
+{% endblock %}

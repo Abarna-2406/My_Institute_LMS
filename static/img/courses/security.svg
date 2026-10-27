@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 300" width="640" height="300" role="img" aria-label="security">
+<defs>
+<linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0f172a"/><stop offset="1" stop-color="#2563eb"/></linearGradient>
+<linearGradient id="shine" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".28"/><stop offset="1" stop-color="#fff" stop-opacity=".06"/></linearGradient>
+<filter id="sh" x="-20%" y="-20%" width="140%" height="150%"><feDropShadow dx="0" dy="8" stdDeviation="9" flood-color="#000" flood-opacity=".28"/></filter>
+</defs>
+<rect width="640" height="300" fill="url(#bg)"/>
+<circle cx="560" cy="40" r="120" fill="#fff" opacity=".08"/>
+<circle cx="60" cy="280" r="110" fill="#fff" opacity=".08"/>
+<circle cx="330" cy="-20" r="60" fill="#fff" opacity=".06"/>
+<g fill="#fff" opacity=".35"><circle cx="40" cy="50" r="3"/><circle cx="70" cy="80" r="2"/><circle cx="600" cy="250" r="3"/><circle cx="575" cy="215" r="2"/><circle cx="300" cy="270" r="2"/><circle cx="360" cy="30" r="2.5"/></g>
+<g filter="url(#sh)"><path d="M320 38 L430 76 V150 c0 50-46 84-110 112 c-64-28-110-62-110-112 V76 z" fill="#fff"/><path d="M320 56 L412 88 V150 c0 40-38 68-92 92 c-54-24-92-52-92-92 V88 z" fill="#1d4ed8"/></g>
+<g><rect x="288" y="140" width="64" height="52" rx="10" fill="#fff"/><path d="M300 140 v-14 a20 20 0 0 1 40 0 v14" fill="none" stroke="#fff" stroke-width="9" stroke-linecap="round"/><circle cx="320" cy="162" r="7" fill="#1d4ed8"/><rect x="317" y="164" width="6" height="16" rx="3" fill="#1d4ed8"/></g>
+<g filter="url(#sh)"><rect x="76" y="90" width="110" height="60" rx="14" fill="#0b1220" opacity=".92"/><g font-family="Consolas,Menlo,monospace" font-size="11"><text x="90" y="112" fill="#4ade80">$ scan --threats</text><text x="90" y="130" fill="#fbbf24">0 vulnerabilities</text></g></g>
+<g filter="url(#sh)"><rect x="470" y="150" width="104" height="52" rx="14" fill="#fff" opacity=".96"/><circle cx="494" cy="176" r="12" fill="#22c55e"/><path d="M488 176 l5 5 l9-10" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><text x="540" y="181" text-anchor="middle" font-family="Segoe UI,Arial,sans-serif" font-size="13" font-weight="800" fill="#14532d">SECURE</text></g>
+</svg>

@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block body_class %}home-page{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+{% block page_crumb %}{{ role_label }} dashboard{% endblock %}
+{% block content %}
+{% set role = session.get('user_role') %}
+{% set first = (session.get('user_name') or 'there').split(' ')[0] %}
+<div class="hm-welcome">
+  <h1>{% if role == 'student' %}Hi, {{ first }}! 👋{% else %}Welcome, {{ first }}.{% endif %}</h1>
+  <p>{% if role == 'admin' %}Here is how {{ institution_name }} is doing today.{% elif role == 'trainer' %}Your classes, courses and students at a glance.{% else %}Keep learning every day and watch your streak grow.{% endif %}</p>
+</div>
+
+<!-- STAT CARDS -->
+<div class="hm-stats auto">
+{% if role == 'admin' %}
+  <a class="hm-stat s1" href="{{ url_for('students_page') }}"><div><small>Students</small><strong>{{ stats.total_students }}</strong><em>{{ stats.active_students }} active</em></div><span class="hm-ic"><i class="fa-solid fa-user-graduate"></i></span></a>
+  <a class="hm-stat s2" href="{{ url_for('courses_page') }}"><div><small>Courses</small><strong>{{ stats.total_courses }}</strong><em>{{ stats.active_courses }} active</em></div><span class="hm-ic"><i class="fa-solid fa-book-open"></i></span></a>
+  <a class="hm-stat s3" href="{{ url_for('trainers_page') }}"><div><small>Trainers</small><strong>{{ stats.total_trainers }}</strong><em>{{ stats.active_trainers }} active</em></div><span class="hm-ic"><i class="fa-solid fa-chalkboard-user"></i></span></a>
+  <a class="hm-stat s4" href="{{ url_for('batches_page') }}"><div><small>Batches</small><strong>{{ stats.total_batches }}</strong><em>{{ stats.ongoing_batches }} ongoing</em></div><span class="hm-ic"><i class="fa-solid fa-layer-group"></i></span></a>
+  <a class="hm-stat s1" href="{{ url_for('attendance_page') }}"><div><small>Attendance</small><strong>{{ stats.attendance_pct }}%</strong><em>Overall</em></div><span class="hm-ic"><i class="fa-solid fa-clipboard-check"></i></span></a>
+  <a class="hm-stat s2" href="{{ url_for('payments_page') }}"><div><small>Payments Received</small><strong>₹{{ '{:,}'.format(stats.total_revenue) }}</strong><em>Paid</em></div><span class="hm-ic"><i class="fa-solid fa-wallet"></i></span></a>
+{% elif role == 'trainer' %}
+  <a class="hm-stat s1" href="{{ url_for('courses_page') }}"><div><small>Assigned Courses</small><strong>{{ stats.total_courses }}</strong><em>{{ stats.active_courses }} active</em></div><span class="hm-ic"><i class="fa-solid fa-book-open"></i></span></a>
+  <a class="hm-stat s2" href="{{ url_for('students_page') }}"><div><small>Assigned Students</small><strong>{{ stats.total_students }}</strong><em>{{ stats.active_students }} active</em></div><span class="hm-ic"><i class="fa-solid fa-user-graduate"></i></span></a>
+  <a class="hm-stat s3" href="{{ url_for('batches_page') }}"><div><small>Assigned Batches</small><strong>{{ stats.total_batches }}</strong><em>{{ stats.ongoing_batches }} ongoing</em></div><span class="hm-ic"><i class="fa-solid fa-layer-group"></i></span></a>
+  <a class="hm-stat s4" href="{{ url_for('attendance_page') }}"><div><small>Attendance</small><strong>{{ stats.attendance_pct }}%</strong><em>Your students</em></div><span class="hm-ic"><i class="fa-solid fa-clipboard-check"></i></span></a>
+  <a class="hm-stat s1" href="{{ url_for('sessions_page') }}"><div><small>Upcoming Sessions</small><strong>{{ stats.upcoming_sessions_count }}</strong><em>Scheduled</em></div><span class="hm-ic"><i class="fa-solid fa-video"></i></span></a>
+{% else %}
+  <a class="hm-stat s1" href="{{ url_for('courses_page') }}"><div><small>My Courses</small><strong>{{ stats.total_courses }}</strong><em>Enrolled</em></div><span class="hm-ic"><i class="fa-solid fa-book-open"></i></span></a>
+  <a class="hm-stat s2" href="{{ url_for('attendance_page') }}"><div><small>My Attendance</small><strong>{{ stats.attendance_pct }}%</strong><em>Keep it above 75%</em></div><span class="hm-ic"><i class="fa-solid fa-clipboard-check"></i></span></a>
+  <a class="hm-stat s3" href="{{ url_for('my_learning') }}"><div><small>Learning Completion</small><strong>{{ stats.learning_completion_pct }}%</strong><em>View My Learning</em></div><span class="hm-ic"><i class="fa-solid fa-book-open-reader"></i></span></a>
+  <a class="hm-stat s4" href="{{ url_for('sessions_page') }}"><div><small>Upcoming Sessions</small><strong>{{ stats.upcoming_sessions_count }}</strong><em>Scheduled</em></div><span class="hm-ic"><i class="fa-solid fa-video"></i></span></a>
+{% endif %}
+</div>
+
+<div class="{{ 'student-dashboard-layout' if role == 'student' else '' }}">
+{% if role == 'student' and gami %}
+<!-- GAMIFICATION -->
+<div class="gm-row">
+  <div class="hm-card gm-streak">
+    <div class="gm-streak-top">
+      <span class="gm-flame {{ 'on' if gami.streak > 0 }}"><i class="fa-solid fa-fire"></i></span>
+      <div><strong>{{ gami.streak }}</strong><span> day streak</span><small>Best: {{ gami.best_streak }} day{{ '' if gami.best_streak == 1 else 's' }}</small></div>
+    </div>
+    <div class="gm-week">
+      {% for d in gami.week %}<div class="gm-day {{ 'active' if d.active }} {{ 'today' if d.today }} {{ 'future' if d.future }}"><span>{{ d.label }}</span><i>{% if d.active %}<b class="fa-solid fa-check"></b>{% else %}{{ d.num }}{% endif %}</i></div>{% endfor %}
+    </div>
+    <p class="gm-msg">{% if gami.active_today %}<i class="fa-solid fa-circle-check"></i> Great! Today's streak is safe.{% elif gami.streak > 0 %}<i class="fa-solid fa-triangle-exclamation"></i> Log in today to keep your {{ gami.streak }}-day streak alive!{% else %}Log in each day to start and maintain your streak.{% endif %}</p>
+    <a class="hm-btn" href="{{ url_for('my_learning') }}"><i class="fa-solid fa-play"></i> Continue learning</a>
+  </div>
+
+  <div class="hm-card gm-level">
+    <div class="hm-head"><h3>Level &amp; XP</h3><span class="hm-tag g">Rank #{{ gami.my_rank or '-' }} of {{ gami.learners }}</span></div>
+    <div class="gm-level-body">
+      <div class="gm-lvl-circle"><small>LEVEL</small><b>{{ gami.level }}</b></div>
+      <div class="gm-lvl-info"><strong>{{ gami.level_title }}</strong><span>{{ gami.xp }} XP total</span></div>
+    </div>
+    <div class="gm-xpbar"><div style="width:{{ gami.level_pct }}%"></div></div>
+    <p class="hm-note" style="margin-top:8px">{{ gami.to_next }} XP to reach Level {{ gami.level + 1 }}</p>
+    <div class="gm-xp-sources"><span><b>{{ gami.lessons_done }}</b> lessons · +10</span><span><b>{{ gami.quizzes }}</b> quizzes · +25</span><span><b>{{ gami.attended }}</b> classes · +5</span></div>
+  </div>
+
+  <div class="hm-card gm-goal">
+    <div class="hm-head"><h3>Weekly Goal</h3></div>
+    <div class="gm-ring">
+      <svg viewBox="0 0 120 120"><circle cx="60" cy="60" r="50" fill="none" stroke="#efeaff" stroke-width="12"/><circle cx="60" cy="60" r="50" fill="none" stroke="#7c4dff" stroke-width="12" stroke-linecap="round" stroke-dasharray="{{ (314.16 * gami.goal_pct / 100)|round(1) }} 314.16" transform="rotate(-90 60 60)"/></svg>
+      <div class="c"><b>{{ gami.goal_done }}/{{ gami.goal }}</b><small>active days</small></div>
+    </div>
+    <p class="hm-note" style="text-align:center">{% if gami.goal_done >= gami.goal %}🎉 Weekly goal achieved!{% else %}Be active on {{ gami.goal - gami.goal_done }} more day{{ '' if gami.goal - gami.goal_done == 1 else 's' }} this week.{% endif %}</p>
+  </div>
+</div>
+
+<div class="gm-row2">
+  <div class="hm-card gm-badges-card">
+    <div class="hm-head"><h3>Badges</h3><span class="hm-tag g">{{ gami.badges_earned }} / {{ gami.badges|length }} earned</span></div>
+    <div class="gm-badges">
+      {% for b in gami.badges %}<div class="gm-badge {{ 'earned' if b.earned else 'locked' }}" title="{{ b.desc }}"><span><i class="fa-solid {{ b.icon }}"></i></span><strong>{{ b.name }}</strong><small>{{ b.desc }}</small></div>{% endfor %}
+    </div>
+  </div>
+  {% if role == 'student' %}
+  <div class="hm-dash-calendar">
+    {% include "_mini_calendar.html" %}
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
+<div class="hm-dash">
+  <div class="hm-dash-main">
+
+    {% if role == 'student' and course_progress %}
+    <div class="hm-card student-courses-card">
+      <div class="hm-head"><h3>My Courses</h3><a href="{{ url_for('courses_page') }}">View All</a></div>
+      <div class="dc-grid">
+        {% for cp in course_progress %}
+        <a class="dc-card" href="{{ url_for('course_detail', course_id=cp.course.id) }}">
+          <img src="{{ course_banner(cp.course) }}" alt="">
+          <div class="dc-body"><strong>{{ cp.course.name }}</strong><small>{{ cp.done }} / {{ cp.total }} completed</small>
+            <div class="gm-xpbar sm"><div style="width:{{ cp.percent }}%"></div></div><span class="dc-pct">{{ cp.percent }}%</span></div>
+        </a>
+        {% endfor %}
+      </div>
+    </div>
+    {% elif role == 'trainer' and courses %}
+    <div class="hm-card">
+      <div class="hm-head"><h3>My Courses</h3><a href="{{ url_for('course_content_page') }}">Course content &amp; analytics</a></div>
+      <div class="dc-grid">
+        {% for c in courses %}
+        <a class="dc-card" href="{{ url_for('course_detail', course_id=c.id) }}">
+          <img src="{{ course_banner(c) }}" alt="">
+          <div class="dc-body"><strong>{{ c.name }}</strong><small>{{ c.duration }} · {{ course_enrolled_count(c.id) }} students</small></div>
+        </a>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    {% if role == 'student' and recommended_courses %}
+    <div class="hm-card student-recommended-card">
+      <div class="hm-head"><h3>Recommended Courses</h3><span class="hm-tag g">{{ recommended_courses|length }} available</span></div>
+      <div class="dc-grid">
+        {% for c in recommended_courses %}
+        <div class="dc-card static">
+          <img src="{{ course_banner(c) }}" alt="">
+          <div class="dc-body"><strong>{{ c.name }}</strong><small>{{ c.category }} · {{ c.duration }}</small>
+            <div class="dc-foot"><b>{% if c.fee|default(0)|float == 0 or c.is_free %}FREE{% else %}₹{{ '{:,}'.format(c.fee) }}{% endif %}</b>
+            <a class="hm-pill" href="{{ url_for('course_detail', course_id=c.id) }}">Details</a>
+            <a class="hm-pill" href="{{ url_for('courses_page') }}?enroll={{ c.id }}">Enroll</a></div></div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="hm-card student-upcoming-card">
+      <div class="hm-head"><h3>Upcoming Sessions</h3><a href="{{ url_for('sessions_page') }}">View All</a></div>
+      {% for s in upcoming_sessions %}
+      <div class="hm-note-li"><span class="n-ic"><i class="fa-solid fa-video"></i></span>
+        <div class="n-t"><strong>{{ s.topic }}</strong><span>{{ batch_name(s.batch_id) }} · {{ s.time }}</span></div><time>{{ s.date }}</time></div>
+      {% else %}<div class="hm-empty">No upcoming sessions.</div>{% endfor %}
+    </div>
+
+    <div class="hm-card student-announcements-card">
+      <div class="hm-head"><h3>Recent Announcements</h3><a href="{{ url_for('announcements_page') }}">View All</a></div>
+      {% for a in recent_announcements %}
+      <div class="hm-note-li"><span class="n-ic {{ 'high' if a.priority == 'High' }}"><i class="fa-solid {{ 'fa-triangle-exclamation' if a.priority == 'High' else 'fa-bullhorn' }}"></i></span>
+        <div class="n-t"><strong>{{ a.title }}</strong><span>{{ a.message }}</span></div><time>{{ a.date }}</time></div>
+      {% else %}<div class="hm-empty">No announcements.</div>{% endfor %}
+    </div>
+  </div>
+
+  {% if role != 'student' %}
+  <div class="hm-dash-side">
+    {% include "_mini_calendar.html" %}
+  </div>
+  {% endif %}
+</div>
+</div>
+{% endblock %}

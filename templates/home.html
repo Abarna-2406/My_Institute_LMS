@@ -1,0 +1,176 @@
+{% extends "base.html" %}
+{% block title %}Home{% endblock %}
+{% block body_class %}home-page{% endblock %}
+{% block page_title %}Home{% endblock %}
+{% block page_crumb %}Manage your institute from one place{% endblock %}
+{% block content %}
+{% set av_colors = ['#7c4dff','#1c9ad6','#f08c1b','#1fa971','#ef476f'] %}
+
+<div class="hm-welcome">
+  <h1>Welcome.</h1>
+  <p>Navigate the future of education with {{ institution_name }}.</p>
+</div>
+
+<!-- TOP STAT CARDS -->
+<div class="hm-stats">
+  <a class="hm-stat s1" href="{{ url_for('students_page') }}">
+    <div><small>Students</small><strong>{{ '{:,}'.format(stats.students) }}</strong><em>{{ stats.active_students }} active</em></div>
+    <span class="hm-ic"><i class="fa-solid fa-user-graduate"></i></span>
+  </a>
+  <a class="hm-stat s2" href="{{ url_for('trainers_page') }}">
+    <div><small>Trainers</small><strong>{{ '{:,}'.format(stats.trainers) }}</strong><em>Teaching staff</em></div>
+    <span class="hm-ic"><i class="fa-solid fa-chalkboard-user"></i></span>
+  </a>
+  <a class="hm-stat s3" href="{{ url_for('courses_page') }}">
+    <div><small>Courses</small><strong>{{ '{:,}'.format(stats.courses) }}</strong><em>{{ stats.batches }} batches</em></div>
+    <span class="hm-ic"><i class="fa-solid fa-book-open"></i></span>
+  </a>
+  <a class="hm-stat s4" href="{{ url_for('payments_page') }}">
+    <div><small>Payments Received</small><strong>₹{{ '{:,}'.format(stats.revenue|int) }}</strong><em>{{ stats.pending }} pending</em></div>
+    <span class="hm-ic"><i class="fa-solid fa-wallet"></i></span>
+  </a>
+</div>
+
+<div class="hm-grid">
+
+  <!-- Upcoming sessions (Class Routine) -->
+  <div class="hm-card a-routine">
+    <div class="hm-head"><h3>Class Routine</h3><a href="{{ url_for('sessions_page') }}">View All</a></div>
+    {% if upcoming %}
+    <div class="hm-routine">
+      {% for s in upcoming %}
+      <div class="hm-rt {{ 'r1' if loop.index is odd else 'r2' }}">
+        <div class="rt-top"><span class="rt-ic"><i class="fa-regular fa-calendar"></i></span><strong>{{ s.date }}</strong></div>
+        <p class="rt-topic">{{ s.topic }}</p>
+        <p>{{ batch_name(s.batch_id) }} · {{ s.time }}{% if s.duration %} · {{ s.duration }}{% endif %}</p>
+        <a class="hm-btn {{ '' if loop.index is odd else 'dark' }}" href="{{ url_for('sessions_page') }}"><i class="fa-solid fa-video"></i> View Session</a>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="hm-empty">No upcoming sessions. <a href="{{ url_for('sessions_page') }}?open=add" style="color:var(--hm-primary);font-weight:700;">Schedule one</a></div>
+    {% endif %}
+  </div>
+
+  <!-- Courses (Library) -->
+  <div class="hm-card a-library">
+    <div class="hm-head"><h3>Courses</h3><a href="{{ url_for('courses_page') }}">View All</a></div>
+    <div class="hm-list">
+      {% for r in course_rows %}
+      <div class="hm-li">
+        <img src="{{ course_banner(r.course) }}" alt="">
+        <div class="li-t"><strong>{{ r.course.name }}</strong><span>{{ r.batches }} batch{{ '' if r.batches == 1 else 'es' }} · {{ r.students }} student{{ '' if r.students == 1 else 's' }}</span></div>
+        <a class="hm-pill" href="{{ url_for('courses_page') }}">View</a>
+      </div>
+      {% else %}
+      <div class="hm-empty">No courses yet.</div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Course statistics (donut) -->
+  <div class="hm-card a-donut">
+    <div class="hm-head"><h3>Course Statistics</h3></div>
+    <div class="hm-donut">
+      <svg viewBox="0 0 140 140" aria-hidden="true">
+        <circle cx="70" cy="70" r="54" fill="none" stroke="#f1f2fb" stroke-width="16"/>
+        {% for d in donut_items %}
+        <circle cx="70" cy="70" r="54" fill="none" stroke="{{ d.color }}" stroke-width="16" stroke-linecap="butt"
+                stroke-dasharray="{{ d.dash }} {{ d.gap }}" stroke-dashoffset="{{ d.offset }}"/>
+        {% endfor %}
+      </svg>
+      <div class="center"><small>Total Students</small><strong>{{ donut_total }}</strong></div>
+    </div>
+    <div class="hm-legend">
+      {% for d in donut_items %}<span title="{{ d.label }} · {{ d.count }}"><i style="background:{{ d.color }}"></i><b>{{ d.label }}</b></span>{% else %}<span>No enrollments yet</span>{% endfor %}
+    </div>
+  </div>
+
+  <!-- Star students -->
+  <div class="hm-card a-star">
+    <div class="hm-head"><h3>Star Students</h3><a href="{{ url_for('students_page') }}">View All</a></div>
+    <div class="table-wrap">
+    <table class="hm-table">
+      <thead><tr><th>Name</th><th>ID</th><th>Course</th><th>Attendance</th></tr></thead>
+      <tbody>
+        {% for st in star %}
+        <tr>
+          <td><div class="hm-person"><span class="hm-av" style="background:{{ av_colors[loop.index0 % 5] }}">{{ st.name[:1]|upper }}</span>{{ st.name }}</div></td>
+          <td class="muted">{{ st.code }}</td>
+          <td class="muted">{{ st.course }}</td>
+          <td><span class="hm-pct {{ 'hi' if st.pct >= 75 else ('mid' if st.pct >= 50 else 'lo') }}">{{ st.pct }}%</span></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="4" class="hm-empty">No students yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </div>
+
+  <!-- Total exams (assessments) -->
+  <div class="hm-card a-exams">
+    <div class="hm-head"><h3>Total Exams</h3><span class="hm-tag g">{{ exams.completed }} completed</span></div>
+    <div class="hm-exam"><strong>{{ exams.total }}</strong><span class="hm-tag">{{ exams.scheduled }} scheduled</span></div>
+    <p class="hm-note">Here is your total assessments count. <a href="{{ url_for('assessments_page') }}">Click here to view details</a></p>
+  </div>
+
+  <!-- Promo -->
+  <div class="hm-card a-promo">
+    <div>
+      <small>New Course</small>
+      <h4>Launch your next course for your learners</h4>
+    </div>
+    <a class="hm-btn" href="{{ url_for('courses_page') }}?open=add">+ Add Course</a>
+    <img src="{{ url_for('static', filename='img/courses/code.svg') }}" alt="">
+  </div>
+
+  <!-- Notifications -->
+  <div class="hm-card a-notif">
+    <div class="hm-head"><h3>Notifications</h3><a href="{{ url_for('announcements_page') }}">View All</a></div>
+    {% for a in notifications %}
+    <div class="hm-note-li">
+      <span class="n-ic {{ 'high' if a.priority == 'High' }}"><i class="fa-solid {{ 'fa-triangle-exclamation' if a.priority == 'High' else 'fa-bullhorn' }}"></i></span>
+      <div class="n-t"><strong>{{ a.title }}</strong><span>{{ a.message }}</span></div>
+      <time>{{ a.date }}</time>
+    </div>
+    {% else %}
+    <div class="hm-empty">No announcements.</div>
+    {% endfor %}
+  </div>
+
+  <!-- Calendar -->
+  <div class="a-cal">{% include "_mini_calendar.html" %}</div>
+
+  <!-- Batch fill (Best performers) -->
+  <div class="hm-card a-perf">
+    <div class="hm-head"><h3>Best Performers · Batch Fill Rate</h3><a href="{{ url_for('batches_page') }}">View All</a></div>
+    <div class="hm-bars">
+      {% for b in performers %}
+      <div class="hm-bar">
+        <div class="b-top"><b>{{ b.name }}</b><span>{{ b.enrolled }} / {{ b.capacity }} seats · {{ b.status }}</span></div>
+        <div class="hm-track"><div class="hm-fill" style="width:{{ b.pct if b.pct > 8 else 8 }}%;background:{{ b.color }}">{{ b.pct }}%</div></div>
+      </div>
+      {% else %}
+      <div class="hm-empty">No batches yet.</div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<!-- QUICK ACCESS : every original Home action is still here -->
+<h3 class="hm-quick-title">Quick Access</h3>
+<div class="hm-quick">
+  <div class="hm-q"><h4><i class="fa-solid fa-book"></i> Course</h4><div class="hm-q-actions"><a class="hm-q-btn" href="{{ url_for('courses_page') }}?open=add">+ Add</a><a class="hm-q-btn o" href="{{ url_for('courses_page') }}">View</a></div></div>
+  <div class="hm-q"><h4><i class="fa-solid fa-chalkboard-user"></i> Trainer</h4><div class="hm-q-actions"><a class="hm-q-btn" href="{{ url_for('trainers_page') }}?open=add">+ Add</a><a class="hm-q-btn o" href="{{ url_for('trainers_page') }}">View</a></div></div>
+  <div class="hm-q"><h4><i class="fa-solid fa-layer-group"></i> Batches</h4><div class="hm-q-actions"><a class="hm-q-btn" href="{{ url_for('batches_page') }}?open=add">+ Add</a><a class="hm-q-btn o" href="{{ url_for('batches_page') }}">View</a></div></div>
+  <div class="hm-q"><h4><i class="fa-solid fa-user-graduate"></i> Students</h4><div class="hm-q-actions"><a class="hm-q-btn" href="{{ url_for('students_page') }}?open=add">+ Add</a><a class="hm-q-btn o" href="{{ url_for('students_page') }}?status=Active">Registered</a><a class="hm-q-btn o" href="{{ url_for('students_page') }}">View</a></div></div>
+  <div class="hm-q"><h4><i class="fa-solid fa-calendar-days"></i> Sessions</h4><div class="hm-q-actions"><a class="hm-q-btn" href="{{ url_for('sessions_page') }}?open=add">+ Add</a><a class="hm-q-btn o" href="{{ url_for('sessions_page') }}">View</a></div></div>
+  <div class="hm-q"><h4><i class="fa-solid fa-clipboard-check"></i> Attendance</h4><div class="hm-q-actions"><a class="hm-q-btn o" href="{{ url_for('attendance_page') }}">View</a></div></div>
+  <div class="hm-q"><h4><i class="fa-solid fa-folder-open"></i> Announcements &amp; Materials</h4><div class="hm-q-actions"><a class="hm-q-btn" href="{{ url_for('announcements_page') }}?open=add">+ Add</a><a class="hm-q-btn o" href="{{ url_for('announcements_page') }}">View</a></div></div>
+  <div class="hm-q"><h4><i class="fa-solid fa-file-pen"></i> Assessment</h4><div class="hm-q-actions"><a class="hm-q-btn" href="{{ url_for('assessments_page') }}?open=add">+ Add</a><a class="hm-q-btn o" href="{{ url_for('assessments_page') }}">View</a></div></div>
+  <div class="hm-q"><h4><i class="fa-solid fa-chart-column"></i> Report</h4><div class="hm-q-actions"><a class="hm-q-btn o" href="{{ url_for('reports_page') }}">View / Download</a></div></div>
+  <div class="hm-q"><h4><i class="fa-solid fa-people-roof"></i> Parents / Guardians</h4><div class="hm-q-actions"><a class="hm-q-btn o" href="{{ url_for('guardians_page') }}">View</a></div></div>
+  <div class="hm-q"><h4><i class="fa-solid fa-wallet"></i> Payments</h4><div class="hm-q-actions"><a class="hm-q-btn o" href="{{ url_for('payments_page') }}">View</a></div></div>
+</div>
+{% endblock %}

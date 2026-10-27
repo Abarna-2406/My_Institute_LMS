@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block title %}{{ course.name }}{% endblock %}
+{% block body_class %}home-page{% endblock %}
+{% block page_title %}{{ course.name }}{% endblock %}
+{% block page_crumb %}Course details &amp; week-wise syllabus{% endblock %}
+{% block content %}
+{% set is_free = (course.fee|default(0)|float == 0) or course.is_free %}
+<a class="cd-back" href="{{ url_for('courses_page') }}"><i class="fa-solid fa-arrow-left"></i> All courses</a>
+
+<div class="cd-hero">
+  <div class="cd-hero-text">
+    <span class="cc-label {{ label[1] }}" style="position:static;display:inline-block;margin-bottom:12px">{{ label[0] }}</span>
+    <h1>{{ course.name }}</h1>
+    <p>{{ course.description or 'No description added yet.' }}</p>
+    <div class="cd-chips">
+      <span><i class="fa-regular fa-clock"></i> {{ course.duration }}</span>
+      <span><i class="fa-solid fa-calendar-week"></i> {{ total_weeks }} weeks</span>
+      <span><i class="fa-solid fa-layer-group"></i> {{ course.category }}</span>
+      <span><i class="fa-solid fa-list-check"></i> {{ lesson_total }} lessons</span>
+      <span><i class="fa-solid fa-user-group"></i> {{ enrolled_count }} enrolled</span>
+      <span>{% if is_free %}<b>FREE</b>{% else %}<b>₹{{ '{:,}'.format((course.fee|default(0)|float)|int) }}</b>{% endif %}</span>
+    </div>
+    <div class="cd-actions">
+      {% if role == 'admin' %}
+        <a class="hm-btn" href="{{ url_for('course_content_page', course=course.id) }}"><i class="fa-solid fa-plus"></i> Add content</a>
+        <a class="hm-btn dark" href="{{ url_for('courses_page') }}"><i class="fa-solid fa-pen"></i> Manage courses</a>
+      {% elif role == 'trainer' %}
+        <a class="hm-btn" href="{{ url_for('course_content_page') }}"><i class="fa-solid fa-chart-pie"></i> Content analytics</a>
+      {% elif role == 'student' and enrolled %}
+        <a class="hm-btn" href="{{ url_for('my_learning') }}#course-{{ course.id }}"><i class="fa-solid fa-play"></i> {{ 'Continue learning' if progress and progress.done else 'Start learning' }}</a>
+      {% elif role == 'student' %}
+        <a class="hm-btn" href="{{ url_for('courses_page') }}?enroll={{ course.id }}"><i class="fa-solid fa-user-plus"></i> {{ 'Enroll free' if is_free else 'Enroll now' }}</a>
+      {% endif %}
+    </div>
+  </div>
+  <div class="cd-hero-img"><img src="{{ course_banner(course) }}" alt="{{ course.name }}"></div>
+</div>
+
+<div class="cd-layout">
+  <div class="cd-main">
+    <div class="hm-card">
+      <div class="hm-head"><h3><i class="fa-solid fa-calendar-week" style="color:var(--hm-primary)"></i> Week-wise syllabus</h3>
+        <span class="hm-tag g">{{ total_weeks }} weeks</span></div>
+      {% if role == 'student' and not enrolled %}<div class="cd-note"><i class="fa-solid fa-lock"></i> You can see the syllabus. Enroll to unlock the lessons.</div>{% endif %}
+      <div class="cd-weeks">
+      {% for w in weeks %}
+        <details class="cd-week" {% if loop.first or (role == 'student' and enrolled and w.total and w.done < w.total and (loop.index0 == 0 or weeks[loop.index0 - 1].done == weeks[loop.index0 - 1].total)) %}open{% endif %}>
+          <summary>
+            <span class="wk-badge {{ 'done' if w.total and w.done == w.total }}">{{ w.week }}</span>
+            <div class="wk-title"><strong>Week {{ w.week }}{% if w.title %}: {{ w.title }}{% endif %}</strong>
+              <small>{% if w.total %}{{ w.total }} item{{ '' if w.total == 1 else 's' }}{% if enrolled %} · {{ w.done }} completed{% endif %}{% else %}Content coming soon{% endif %}</small></div>
+            <i class="fa-solid fa-chevron-down wk-caret"></i>
+          </summary>
+          <div class="cd-lessons">
+            {% for l in w.lessons %}
+            <div class="cd-lesson {{ 'done' if l.completed }} {{ 'locked' if not l.unlocked }}">
+              <span class="ls-ic k-{{ l.kind }}"><i class="fa-solid {{ 'fa-circle-play' if l.kind == 'Video' else ('fa-file-lines' if l.kind == 'Document' else 'fa-clipboard-question') }}"></i></span>
+              <div class="ls-t"><strong>{{ l.title }}</strong><small>{{ 'Video lecture' if l.kind == 'Video' else ('PDF / Slides' if l.kind == 'Document' else 'Quiz / assessment') }}{% if l.description %} · {{ l.description }}{% endif %}</small></div>
+              <div class="ls-actions">
+                {% if role == 'student' %}
+                  {% if l.completed %}<span class="hm-tag g"><i class="fa-solid fa-check"></i> Done</span>{% endif %}
+                  {% if l.unlocked %}<a class="hm-pill" href="{{ url_for('my_learning') }}#lesson-{{ l.id }}">{{ 'Review' if l.completed else 'Start' }}</a>
+                  {% else %}<span class="hm-pill off"><i class="fa-solid fa-lock"></i> {{ 'Enroll' if not enrolled else 'Locked' }}</span>{% endif %}
+                {% else %}
+                  {% if l.kind != 'Assessment' and l.url %}<button type="button" class="hm-pill" onclick='openPreview({{ l.url|tojson }}, {{ l.kind|tojson }}, {{ l.title|tojson }})'><i class="fa-solid fa-eye"></i> Open</button>
+                  {% elif l.kind == 'Assessment' %}<a class="hm-pill" href="{{ url_for('assessments_page') }}"><i class="fa-solid fa-eye"></i> View quiz</a>{% endif %}
+                  {% if role == 'admin' %}
+                    <a class="hm-pill" href="{{ url_for('edit_course_lesson', lesson_id=l.id) }}"><i class="fa-solid fa-pen"></i></a>
+                    <form method="post" action="{{ url_for('delete_course_lesson', lesson_id=l.id) }}" onsubmit="return confirm('Remove this item from the course?')" style="display:inline"><button class="hm-pill danger" type="submit"><i class="fa-solid fa-trash"></i></button></form>
+                  {% endif %}
+                {% endif %}
+              </div>
+            </div>
+            {% else %}
+            <div class="cd-empty">{% if role == 'admin' %}No content in this week yet. <a href="{{ url_for('course_content_page', course=course.id) }}">Add the first lesson</a>.{% else %}The admin has not added content for this week yet.{% endif %}</div>
+            {% endfor %}
+          </div>
+        </details>
+      {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <div class="cd-side">
+    {% if progress %}
+    <div class="hm-card">
+      <div class="hm-head"><h3>Your progress</h3></div>
+      <div class="gm-ring">
+        <svg viewBox="0 0 120 120"><circle cx="60" cy="60" r="50" fill="none" stroke="#efeaff" stroke-width="12"/><circle cx="60" cy="60" r="50" fill="none" stroke="#7c4dff" stroke-width="12" stroke-linecap="round" stroke-dasharray="{{ (314.16 * progress.percent / 100)|round(1) }} 314.16" transform="rotate(-90 60 60)"/></svg>
+        <div class="c"><b>{{ progress.percent }}%</b><small>{{ progress.done }} / {{ progress.total }}</small></div>
+      </div>
+    </div>
+    {% endif %}
+    <div class="hm-card">
+      <div class="hm-head"><h3>Instructor &amp; batches</h3></div>
+      {% for b in batches %}
+      <div class="hm-note-li"><span class="hm-av" style="background:linear-gradient(135deg,#7c4dff,#4cc9f0)">{{ (trainer_name(b.trainer_id) or '?')[:1]|upper }}</span>
+        <div class="n-t"><strong>{{ trainer_name(b.trainer_id) }}</strong><span>{{ b.name }} · {{ b.start_date }} → {{ b.end_date }}</span><span>{{ b.status }}{% if b.timing %} · {{ b.timing }}{% else %} · class time is shared via live sessions{% endif %}</span></div></div>
+      {% else %}<div class="hm-empty">No batch yet.</div>{% endfor %}
+    </div>
+  </div>
+</div>
+
+{% if role in ['admin','trainer'] %}
+<div class="modal-overlay" id="previewModal"><div class="modal-box" style="max-width:900px;width:96%">
+  <div class="modal-header"><h3 id="previewTitle">Preview</h3><button class="modal-close" type="button" onclick="closePreview()"><i class="fa-solid fa-xmark"></i></button></div>
+  <div class="modal-body" id="previewBody" style="padding:0;background:#0b1220;min-height:300px"></div>
+</div></div>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+<script>
+function openPreview(url, kind, title){
+  var body=document.getElementById('previewBody'); document.getElementById('previewTitle').textContent=title;
+  if(kind==='Video'){ body.innerHTML='<video controls autoplay style="width:100%;max-height:70vh;display:block" src="'+url+'"></video>'; }
+  else { body.innerHTML='<iframe src="'+url+'" style="width:100%;height:72vh;border:0;background:#fff"></iframe><div style="padding:10px;background:#fff"><a class="hm-pill" href="'+url+'" download>Download file</a> <small style="color:#8a8fb0">PowerPoint files cannot be previewed in the browser - use Download.</small></div>'; }
+  openModal('previewModal');
+}
+function closePreview(){ var b=document.getElementById('previewBody'); if(b) b.innerHTML=''; closeModal('previewModal'); }
+</script>
+{% endblock %}

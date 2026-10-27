@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+{% block title %}Live Class{% endblock %}
+{% block page_title %}Live Class{% endblock %}
+{% block page_crumb %}{{ live_session.topic }}{% if tracking_enabled %} · Attendance is tracked automatically{% endif %}{% endblock %}
+{% block content %}
+<div class="card live-class-card">
+  <div class="card-header">
+    <div>
+      <h3><i class="fa-solid fa-video"></i> {{ live_session.topic }}</h3>
+      <div class="cell-muted">{{ live_session.date }} · {{ live_session.time }} · {{ live_session.duration }}</div>
+    </div>
+    <span class="badge badge-blue" id="attendanceStatus">Preparing meeting…</span>
+  </div>
+  {% if tracking_enabled %}
+  <div class="live-attendance-notice">
+    <i class="fa-solid fa-circle-info"></i>
+    <div><strong>Attendance requirement</strong><br>Stay actively connected to this live class for at least <strong>75%</strong> of the scheduled duration to receive attendance.</div>
+  </div>
+  <div class="live-progress-box">
+    <div class="live-progress-top"><span>Active connection time</span><strong id="timeText">0 / {{ duration_minutes }} min</strong></div>
+    <div class="progress-track"><div class="progress-fill" id="liveProgress" style="width:0%"></div></div>
+    <div class="live-progress-bottom"><span>Required: {{ (duration_minutes * 0.75)|round(1) }} min</span><span id="percentText">0%</span></div>
+  </div>
+  {% endif %}
+  <div id="browserNotice" class="live-attendance-notice" style="display:none;">
+    <i class="fa-solid fa-circle-exclamation"></i>
+    <div><strong>Meeting could not be embedded</strong><br><span id="browserNoticeText">This browser could not embed Jitsi. Open the meeting in a new tab instead. Attendance tracking may be limited because this browser could not report Jitsi join/leave events.</span></div>
+  </div>
+  <div id="jitsiContainer" style="height:70vh;min-height:520px;border-radius:14px;overflow:hidden;background:#0b1220;"></div>
+  <div class="page-actions" id="fallbackActions" style="display:none;margin-top:14px;justify-content:flex-start;gap:10px;flex-wrap:wrap;">
+    <button type="button" class="btn btn-primary" onclick="retryMeeting()"><i class="fa-solid fa-rotate"></i> Retry meeting</button>
+    <span class="cell-muted">The class always opens inside this page. Allow camera/microphone for this site, then retry.</span>
+  </div>
+  {% if user_role in ['admin','trainer'] and jitsi.mode in ['public'] %}
+  <div class="live-attendance-notice" style="margin-top:12px"><i class="fa-solid fa-circle-info"></i><div><strong>Using the free public Jitsi server</strong><br>For reliable in-page classes without login prompts or time limits, add your JaaS keys (JAAS_APP_ID, JAAS_KEY_ID, JAAS_PRIVATE_KEY) in <code>.env</code>.</div></div>
+  {% endif %}
+  <div class="page-actions" style="margin-top:14px;justify-content:space-between;">
+    <a class="btn btn-outline" href="{{ url_for('sessions_page') }}"><i class="fa-solid fa-arrow-left"></i> Back to Sessions</a>
+    <button class="btn btn-danger" type="button" onclick="leaveClass()"><i class="fa-solid fa-right-from-bracket"></i> {{ 'End Class' if user_role in ['admin','trainer'] else 'Leave Class' }}</button>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+const sessionId = {{ live_session.id|tojson }};
+const durationMinutes = {{ duration_minutes|tojson }};
+const trackingEnabled = {{ tracking_enabled|tojson }};
+const userRole = {{ user_role|tojson }};
+const jitsiCfg = {{ jitsi|tojson }};
+const displayName = {{ (session.get('user_name') or 'Guest')|tojson }};
+const displayEmail = {{ (session.get('user_email') or '')|tojson }};
+const returnUrl = {{ url_for('sessions_page')|tojson }};
+let api = null, heartbeatTimer = null, joined = false, leaving = false, redirectStarted = false;
+
+function setStatus(text, cls) {
+  const el = document.getElementById('attendanceStatus');
+  el.textContent = text; el.className = 'badge ' + (cls || 'badge-blue');
+}
+function showFallback(message) {
+  document.getElementById('browserNotice').style.display = 'flex';
+  document.getElementById('browserNoticeText').textContent = message;
+  document.getElementById('jitsiContainer').style.display = 'none';
+  document.getElementById('fallbackActions').style.display = 'flex';
+}
+function post(url, body) {
+  return fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body || {})})
+    .then(async r => { const type = r.headers.get('content-type') || ''; if (!type.includes('application/json')) throw new Error('Unexpected server response. Please sign in again.'); const d = await r.json(); if (!r.ok) throw new Error(d.error || 'Request failed.'); return d; });
+}
+function updateProgress(d) {
+  const pct = Math.min(100, Number(d.percent || 0));
+  const progress = document.getElementById('liveProgress');
+  if (progress) progress.style.width = pct + '%';
+  const percent = document.getElementById('percentText'); if (percent) percent.textContent = pct + '%';
+  const time = document.getElementById('timeText'); if (time) time.textContent = (d.active_minutes || 0) + ' / ' + durationMinutes + ' min';
+  if (d.eligible) setStatus('Attendance eligible', 'badge-green');
+}
+function heartbeat() {
+  if (!trackingEnabled || leaving) return;
+  post('/api/live-session/' + sessionId + '/heartbeat', {active: joined && !leaving})
+    .then(d => { if (d.ok) { updateProgress(d); if (d.completed) { setStatus(d.eligible ? 'Attendance recorded' : 'Attendance not granted', d.eligible ? 'badge-green' : 'badge-red'); if (heartbeatTimer) clearInterval(heartbeatTimer); heartbeatTimer = null; } } })
+    .catch(err => { console.warn('Attendance heartbeat failed:', err); setStatus('Attendance sync issue', 'badge-red'); const notice=document.getElementById('browserNotice'); if(notice){ notice.style.display='flex'; document.getElementById('browserNoticeText').textContent='The meeting is open, but LMS attendance could not sync: '+(err.message || 'unknown error')+'. Keep this LMS tab open and rejoin from Sessions if needed.'; } });
+}
+function finishAndReturn() {
+  if (redirectStarted) return;
+  redirectStarted = true; leaving = true; joined = false;
+  if (heartbeatTimer) { clearInterval(heartbeatTimer); heartbeatTimer = null; }
+  const oldApi = api; api = null;
+  if (oldApi) { try { oldApi.dispose(); } catch (e) { console.warn('Jitsi cleanup failed', e); } }
+  if (!trackingEnabled) {
+    // An admin/trainer explicitly ending the meeting closes it for every login.
+    const finishRequest = (userRole === 'admin' || userRole === 'trainer')
+      ? fetch('/api/session/' + sessionId + '/complete', {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'}).catch(err => console.warn('Unable to mark session completed:', err))
+      : Promise.resolve();
+    finishRequest.finally(() => window.location.replace(returnUrl));
+    return;
+  }
+  // Ensure navigation happens even if the attendance endpoint is unavailable.
+  let navigated = false;
+  const redirectTimer = setTimeout(() => { if (!navigated) window.location.replace(returnUrl); }, 1800);
+  post('/api/live-session/' + sessionId + '/leave', {})
+    .catch(err => console.warn('Attendance leave update failed:', err))
+    .finally(() => { navigated = true; clearTimeout(redirectTimer); window.location.replace(returnUrl); });
+}
+function leaveClass() {
+  if (leaving) return;
+  // Hang up through the IFrame API when possible; its close events will call finishAndReturn.
+  if (api) { try { api.executeCommand('hangup'); setTimeout(finishAndReturn, 1200); return; } catch (e) {} }
+  finishAndReturn();
+}
+window.addEventListener('beforeunload', () => {
+  if (trackingEnabled && joined && !leaving) navigator.sendBeacon('/api/live-session/' + sessionId + '/leave', new Blob(['{}'], {type:'application/json'}));
+});
+document.addEventListener('visibilitychange', () => { if (joined) heartbeat(); });
+
+function loadJitsiApi(src) {
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script'); script.src = src; script.async = true;
+    script.onload = resolve; script.onerror = () => reject(new Error('Jitsi API script failed to load.')); document.head.appendChild(script);
+  });
+}
+let startTimer = null;
+function retryMeeting() {
+  if (api) { try { api.dispose(); } catch (e) {} api = null; }
+  document.getElementById('jitsiContainer').style.display = '';
+  document.getElementById('jitsiContainer').innerHTML = '';
+  document.getElementById('browserNotice').style.display = 'none';
+  document.getElementById('fallbackActions').style.display = 'none';
+  setStatus('Preparing meeting…', 'badge-blue');
+  startMeeting();
+}
+async function startMeeting() {
+  if (!(window.RTCPeerConnection || window.webkitRTCPeerConnection)) { setStatus('Browser video support unavailable', 'badge-red'); showFallback('This browser does not support WebRTC. Update Chrome or Edge, then retry.'); return; }
+  try {
+    if (typeof JitsiMeetExternalAPI === 'undefined') await loadJitsiApi(jitsiCfg.script);
+    if (typeof JitsiMeetExternalAPI === 'undefined') throw new Error('Jitsi API is unavailable.');
+    const options = {
+      roomName: jitsiCfg.room, parentNode: document.getElementById('jitsiContainer'), width: '100%', height: '100%',
+      userInfo: {displayName: displayName, email: displayEmail},
+      configOverwrite: {prejoinPageEnabled: true, disableDeepLinking: true, startWithAudioMuted: userRole === 'student', startWithVideoMuted: false, enableWelcomePage: false, enableClosePage: false},
+      interfaceConfigOverwrite: {TOOLBAR_BUTTONS: ['microphone','camera','desktop','chat','raisehand','tileview','fullscreen','hangup','participants-pane'], SHOW_JITSI_WATERMARK: false, MOBILE_APP_PROMO: false}
+    };
+    if (jitsiCfg.jwt) options.jwt = jitsiCfg.jwt;
+    api = new JitsiMeetExternalAPI(jitsiCfg.domain, options);
+    api.addEventListener('videoConferenceJoined', () => { joined = true; if (startTimer) clearTimeout(startTimer); setStatus(trackingEnabled ? 'Live · Attendance tracking' : 'Live meeting connected', 'badge-blue'); if (trackingEnabled && !heartbeatTimer) { heartbeatTimer = setInterval(heartbeat, 10000); heartbeat(); } });
+    api.addEventListener('videoConferenceLeft', () => { joined = false; finishAndReturn(); });
+    api.addEventListener('readyToClose', () => finishAndReturn());
+    api.addEventListener('errorOccurred', e => {
+      console.warn('Jitsi error:', e); setStatus('Meeting connection error', 'badge-red');
+      if (!joined) showFallback(window.isSecureContext ? 'Jitsi could not connect in this page. Check camera/microphone permission and internet, then retry.' : 'This LMS address is not a secure context (HTTP on a network IP), so the browser may block camera/microphone. Open http://localhost:5000 on this computer or enable HTTPS.');
+    });
+    if (startTimer) clearTimeout(startTimer);
+    startTimer = setTimeout(() => { if (!joined && !leaving) showFallback(window.isSecureContext ? 'Jitsi has not confirmed a connection yet. Allow camera/microphone and retry.' : 'This LMS address is not a secure context (HTTP on a network IP). Use http://localhost:5000 or HTTPS.'); }, 45000);
+  } catch (e) {
+    console.error(e); setStatus('Meeting could not start', 'badge-red'); showFallback(e.message || 'The embedded meeting failed to start.');
+  }
+}
+if (trackingEnabled) {
+  post('/api/live-session/' + sessionId + '/join', {}).then(d => {
+    if (!d.ok) throw new Error(d.error || 'Unable to join tracked live session');
+    startMeeting();
+  }).catch(err => { setStatus('Attendance service unavailable', 'badge-red'); document.getElementById('browserNotice').style.display='flex'; document.getElementById('browserNoticeText').textContent=(err.message || 'Could not connect to the attendance service.')+' Jitsi will still try to open on this page; attendance cannot be recorded until the LMS tracker connects.'; startMeeting(); });
+} else {
+  startMeeting();
+}
+</script>
+{% endblock %}

@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Certificates{% endblock %}
+{% block page_title %}Certificates{% endblock %}
+{% block page_crumb %}View and manage course completion certificates{% endblock %}
+{% block content %}
+{% if session.get('user_role')=='admin' %}
+<div class="card cert-create-card">
+  <div class="card-header"><h3><i class="fa-solid fa-wand-magic-sparkles"></i> Generate certificate</h3><span class="badge badge-green">Admin only</span></div>
+  <div class="card-body">
+    <p class="cell-muted">Choose a student, their enrolled course, and a template. The certificate name, course, issue date, certificate ID and duration are filled automatically.</p>
+    <form method="post" enctype="multipart/form-data" action="{{ url_for('issue_certificate') }}" class="form-grid">
+      <div class="form-group"><label>Student</label><select class="form-control" name="student_id" id="certStudent" required onchange="filterCertCourses()"><option value="">Select student</option>{% for s in students %}<option value="{{ s.id }}" data-courses="{{ student_course_ids(s)|join(',') }}">{{ s.name }} — {{ s.email }}</option>{% endfor %}</select></div>
+      <div class="form-group"><label>Course</label><select class="form-control" name="course_id" id="certCourse" required><option value="">Select enrolled course</option>{% for c in courses %}<option value="{{ c.id }}" data-duration="{{ c.duration }}">{{ c.name }} · {{ c.duration }}</option>{% endfor %}</select></div>
+      <div class="form-group"><label>Certificate template</label><select class="form-control" name="template"><option value="classic">Classic navy & gold</option><option value="modern">Modern minimal</option><option value="elegant">Elegant academic</option></select></div>
+      <div class="form-group"><label>Course duration</label><input id="certDuration" class="form-control" readonly placeholder="Auto-filled from course"></div>
+      <div class="form-group"><label>Certificate logo (PNG/JPG/SVG)</label><input class="form-control" type="file" name="certificate_logo" accept=".png,.jpg,.jpeg,.svg,image/png,image/jpeg,image/svg+xml"><small class="cell-muted">Embedded into the generated PDF.</small></div>
+      <div class="form-group"><label>Authorized signature (PNG/JPG/SVG)</label><input class="form-control" type="file" name="certificate_signature" accept=".png,.jpg,.jpeg,.svg,image/png,image/jpeg,image/svg+xml"><small class="cell-muted">Embedded into the generated PDF.</small></div>
+      <div class="full"><button class="btn btn-primary" type="submit"><i class="fa-solid fa-certificate"></i> Generate certificate</button></div>
+    </form>
+  </div>
+</div>
+{% endif %}
+<div class="card">
+  <div class="card-header"><h3>{{ 'My certificates' if student_view else 'Certificate library' }}</h3><span class="badge badge-blue">{{ certificates|length }}</span></div>
+  <div class="card-body cert-list">
+    {% for cert in certificates %}
+    <div class="cert-item">
+      <div class="cert-icon"><i class="fa-solid fa-award"></i></div>
+      <div class="cert-meta"><strong>{{ cert.course_name }}</strong><span>{{ cert.student_name or '' }} · {{ cert.duration or '' }}</span><small>{{ cert.certificate_number }} · Issued {{ cert.issued_at }}</small></div>
+      {% if student_view %}
+        <a class="btn btn-outline" href="{{ url_for('download_certificate',certificate_id=cert.id) }}"><i class="fa-solid fa-file-pdf"></i> Download PDF</a>
+      {% else %}
+        <button class="btn btn-outline" type="button" onclick="openCertificatePreview('{{ url_for('view_certificate',certificate_id=cert.id) }}')"><i class="fa-solid fa-eye"></i> View</button>
+      {% endif %}
+    </div>
+    {% else %}<p class="empty-state">No certificates have been issued yet.</p>{% endfor %}
+  </div>
+</div>
+{% if not student_view %}
+<div class="modal-overlay" id="certificatePreviewModal">
+  <div class="modal-box" style="width:min(1100px,96vw);max-width:1100px;height:90vh;display:flex;flex-direction:column;">
+    <div class="modal-header"><h3><i class="fa-solid fa-certificate"></i> Certificate preview</h3><button class="modal-close" type="button" onclick="closeCertificatePreview()" aria-label="Close preview"><i class="fa-solid fa-xmark"></i></button></div>
+    <div class="modal-body" style="flex:1;min-height:0;padding:0;"><iframe id="certificatePreviewFrame" title="Certificate preview" style="border:0;width:100%;height:100%;background:#fff;"></iframe></div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+<script>
+function filterCertCourses(){const s=document.getElementById('certStudent'),c=document.getElementById('certCourse');if(!s||!c)return;const allowed=(s.selectedOptions[0]?.dataset.courses||'').split(',');[...c.options].forEach((o,i)=>{if(i)o.hidden=!allowed.includes(o.value);});c.value='';document.getElementById('certDuration').value='';}
+document.getElementById('certCourse')?.addEventListener('change',function(){document.getElementById('certDuration').value=this.selectedOptions[0]?.dataset.duration||'';});
+function openCertificatePreview(url){const frame=document.getElementById('certificatePreviewFrame');if(!frame)return;frame.src=url+'#toolbar=0&navpanes=0';openModal('certificatePreviewModal');}
+function closeCertificatePreview(){const frame=document.getElementById('certificatePreviewFrame');if(frame)frame.src='about:blank';closeModal('certificatePreviewModal');}
+</script>
+{% endblock %}

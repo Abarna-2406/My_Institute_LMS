@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block title %}Course Content{% endblock %}
+{% block body_class %}home-page{% endblock %}
+{% block page_title %}{{ 'Course Content' if role == 'admin' else 'My Course Content' }}{% endblock %}
+{% block page_crumb %}{% if role == 'admin' %}Build week-wise lessons for every course{% else %}Content coverage and learner progress for your courses{% endif %}{% endblock %}
+{% block content %}
+{% set ay = analytics %}
+<div class="hm-welcome"><h1>{{ 'Course Content' if role == 'admin' else 'My Course Content' }}</h1>
+<p>{% if role == 'admin' %}Only the admin adds content. Trainers and students can view and learn from it, week by week.{% else %}View-only. Content is added by the institute admin - here is how it is being used.{% endif %}</p></div>
+
+<div class="hm-stats auto">
+  <div class="hm-stat s1"><div><small>Courses</small><strong>{{ courses|length }}</strong><em>{{ ay.total_lessons }} lessons in total</em></div><span class="hm-ic"><i class="fa-solid fa-book-open"></i></span></div>
+  <div class="hm-stat s2"><div><small>Video lectures</small><strong>{{ ay.totals.Video }}</strong><em>{{ ay.totals.Document }} documents</em></div><span class="hm-ic"><i class="fa-solid fa-circle-play"></i></span></div>
+  <div class="hm-stat s3"><div><small>Learners</small><strong>{{ ay.students }}</strong><em>Enrolled in these courses</em></div><span class="hm-ic"><i class="fa-solid fa-user-graduate"></i></span></div>
+  <div class="hm-stat s4"><div><small>Avg completion</small><strong>{{ ay.avg_completion }}%</strong><em>{{ ay.totals.Assessment }} quizzes</em></div><span class="hm-ic"><i class="fa-solid fa-chart-line"></i></span></div>
+</div>
+
+<!-- CHARTS -->
+<div class="cx-grid">
+  <div class="hm-card">
+    <div class="hm-head"><h3>Content mix</h3></div>
+    <div class="hm-donut">
+      <svg viewBox="0 0 140 140" aria-hidden="true"><circle cx="70" cy="70" r="54" fill="none" stroke="#f1f2fb" stroke-width="16"/>
+        {% for d in ay.mix %}{% if d.count %}<circle cx="70" cy="70" r="54" fill="none" stroke="{{ d.color }}" stroke-width="16" stroke-dasharray="{{ d.dash }} {{ d.gap }}" stroke-dashoffset="{{ d.offset }}"/>{% endif %}{% endfor %}</svg>
+      <div class="center"><small>Total</small><strong>{{ ay.total_lessons }}</strong></div>
+    </div>
+    <div class="hm-legend">{% for d in ay.mix %}<span><i style="background:{{ d.color }}"></i><b>{{ d.label }} · {{ d.count }}</b></span>{% endfor %}</div>
+  </div>
+
+  <div class="hm-card">
+    <div class="hm-head"><h3>Course completion</h3></div>
+    <div class="hm-bars">
+      {% for c in ay.courses %}
+      <div class="hm-bar"><div class="b-top"><b>{{ c.name }}</b><span>{{ c.students }} learner{{ '' if c.students == 1 else 's' }} · {{ c.avg }}%</span></div>
+        <div class="hm-track"><div class="hm-fill" style="width:{{ c.avg if c.avg > 6 else 6 }}%;background:linear-gradient(90deg,#7c4dff,#b197fc)">{{ c.avg }}%</div></div></div>
+      {% else %}<div class="hm-empty">No courses yet.</div>{% endfor %}
+    </div>
+  </div>
+
+  <div class="hm-card cx-wide">
+    <div class="hm-head"><h3>Weekly content coverage</h3>
+      <select id="cxCourse" class="filter-select" style="min-width:200px" onchange="drawWeekly()">{% for c in ay.courses %}<option value="{{ loop.index0 }}">{{ c.name }}</option>{% endfor %}</select></div>
+    <div id="cxWeekly" class="cx-weekly"></div>
+    <div class="hm-legend" style="margin-top:8px"><span><i style="background:#7c4dff"></i><b>Video</b></span><span><i style="background:#ff9f43"></i><b>Document</b></span><span><i style="background:#2ec4b6"></i><b>Quiz</b></span><span id="cxCovered" style="margin-left:auto"></span></div>
+  </div>
+
+  <div class="hm-card cx-wide">
+    <div class="hm-head"><h3>Learner progress</h3><span class="cell-muted" id="cxLearnerCourse"></span></div>
+    <div id="cxLearners" class="hm-bars"></div>
+  </div>
+</div>
+
+{% if role == 'admin' %}
+<div class="hm-card" style="margin-top:16px" id="addContent">
+  <div class="hm-head"><h3><i class="fa-solid fa-plus" style="color:var(--hm-primary)"></i> Add content to a week</h3></div>
+<form method="post" action="{{ url_for('create_course_lesson') }}" enctype="multipart/form-data" class="form-grid">
+<div class="form-group"><label>Course</label><select class="form-control" name="course_id" id="lessonCourse" required onchange="onCourseChange()"><option value="">Select course</option>{% for c in courses %}<option value="{{ c.id }}" data-weeks="{{ week_counts.get(c.id, 4) }}" {{ 'selected' if preselect == c.id }}>{{ c.name }} ({{ week_counts.get(c.id, 4) }} weeks)</option>{% endfor %}</select></div>
+<div class="form-group"><label>Week</label><select class="form-control" name="week" id="lessonWeek" required></select></div>
+<div class="form-group"><label>Week title (optional)</label><input class="form-control" name="week_title" maxlength="80" placeholder="e.g. Introduction to HTML"></div>
+<div class="form-group"><label>Content type</label><select class="form-control" name="kind" id="lessonKind" onchange="toggleLessonType()"><option value="Video">Video lesson</option><option value="Document">PDF / PowerPoint</option><option value="Assessment">Quiz / assessment</option></select></div>
+<div class="form-group"><label>Topic title</label><input class="form-control" name="title" required placeholder="e.g. HTML basics - tags and attributes"></div>
+<div class="form-group"><label>Order inside the week</label><input class="form-control" name="position" type="number" min="1" placeholder="Auto if blank"></div>
+<div class="full form-group"><label>Description / learning objective</label><textarea class="form-control" name="description" rows="2" placeholder="What will learners learn?"></textarea></div>
+<div class="full form-group" id="videoFields"><label>Upload video file <span class="required">*</span></label><input class="form-control" type="file" name="video_file" accept="video/mp4,video/webm,video/ogg,video/quicktime,video/x-m4v" required><small>MP4, WebM, OGG, MOV or M4V.</small></div>
+<div class="full form-group" id="documentFields" style="display:none"><label>Upload PDF / PowerPoint <span class="required">*</span></label><input class="form-control" type="file" name="document_file" accept=".pdf,.ppt,.pptx"><small>PDF, PPT, PPTX.</small></div>
+<div class="full form-group" id="quizFields" style="display:none"><label>Existing quiz for selected course</label><select class="form-control" name="assessment_id" id="lessonAssessment"><option value="">Select quiz</option>{% for a in assessments %}<option value="{{ a.id }}" data-course="{{ a.course_id }}">{{ a.title }}</option>{% endfor %}</select><small>Create the quiz first from Assessment, then add it to a week here.</small></div>
+<div class="full"><button class="btn btn-primary" type="submit"><i class="fa-solid fa-plus"></i> Add to week</button></div>
+</form></div>
+{% endif %}
+
+<div class="hm-card" style="margin-top:16px">
+  <div class="hm-head"><h3>Course curriculum <span class="hm-tag g">{{ lessons|length }}</span></h3></div>
+  <div class="table-wrap"><table class="hm-table"><thead><tr><th>Course</th><th>Week</th><th>Topic</th><th>Type</th><th>Content</th>{% if role == 'admin' %}<th>Actions</th>{% endif %}</tr></thead><tbody>
+  {% for l in lessons %}<tr>
+    <td>{{ course_name(l.course_id) }}</td>
+    <td><b>Week {{ l.module_position or 1 }}</b>{% if l.module_name and ':' in l.module_name %}<div class="muted">{{ l.module_name.split(':',1)[1].strip() }}</div>{% endif %}</td>
+    <td><strong>{{ l.title }}</strong><div class="muted">{{ l.description }}</div></td>
+    <td>{{ l.kind }}</td>
+    <td>{% if l.kind == 'Video' %}<a href="{{ l.video_url }}" target="_blank" rel="noopener">Preview video</a>{% elif l.kind == 'Document' %}<a href="{{ url_for('course_material', lesson_id=l.id) }}" target="_blank" rel="noopener">Preview {{ l.document_original_name or 'file' }}</a>{% else %}{{ assessment_title(l.assessment_id) }}{% endif %}</td>
+    {% if role == 'admin' %}<td style="white-space:nowrap"><a class="btn btn-sm btn-primary" href="{{ url_for('edit_course_lesson', lesson_id=l.id) }}"><i class="fa-solid fa-pen-to-square"></i> Edit</a> <form method="post" action="{{ url_for('delete_course_lesson', lesson_id=l.id) }}" style="display:inline" onsubmit="return confirm('Delete this course content item? This removes it from the curriculum.');"><button class="btn btn-sm btn-danger" type="submit"><i class="fa-solid fa-trash"></i> Delete</button></form></td>{% endif %}
+  </tr>{% else %}<tr><td colspan="{{ 6 if role == 'admin' else 5 }}" class="hm-empty">No curriculum items yet.{% if role == 'admin' %} Add a video, document or quiz above.{% endif %}</td></tr>{% endfor %}
+  </tbody></table></div>
+</div>
+{% endblock %}
+{% block scripts %}<script>
+var CX = {{ analytics.courses|tojson }};
+function esc(t){return String(t==null?'':t).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+function drawWeekly(){
+  var sel=document.getElementById('cxCourse'); var c=CX[sel?Number(sel.value):0]; var box=document.getElementById('cxWeekly');
+  if(!c){box.innerHTML='<div class="hm-empty">No courses yet.</div>';return;}
+  var max=1; c.by_week.forEach(function(w){max=Math.max(max,w.Video+w.Document+w.Assessment);});
+  var h='';
+  c.by_week.forEach(function(w){
+    var t=w.Video+w.Document+w.Assessment, ph=function(n){return (n/max*100)+'%';};
+    h+='<div class="cx-col" title="Week '+w.week+': '+t+' items"><span class="cx-val">'+(t||'')+'</span><div class="cx-stack">'+
+       (w.Assessment?'<i style="height:'+ph(w.Assessment)+';background:#2ec4b6"></i>':'')+(w.Document?'<i style="height:'+ph(w.Document)+';background:#ff9f43"></i>':'')+(w.Video?'<i style="height:'+ph(w.Video)+';background:#7c4dff"></i>':'')+
+       '</div><span class="cx-lbl">W'+w.week+'</span></div>';
+  });
+  box.innerHTML=h;
+  document.getElementById('cxCovered').textContent=c.covered_weeks+' of '+c.weeks+' weeks have content';
+  document.getElementById('cxLearnerCourse').textContent=c.name;
+  var L=document.getElementById('cxLearners');
+  L.innerHTML=c.learners.length?c.learners.map(function(l){return '<div class="hm-bar"><div class="b-top"><b>'+esc(l.name)+'</b><span>'+l.done+' / '+l.total+' · '+l.percent+'%</span></div><div class="hm-track" style="height:12px"><div class="hm-fill" style="width:'+(l.percent||2)+'%;min-width:0;background:linear-gradient(90deg,#2ec4b6,#7ee0d4)"></div></div></div>';}).join(''):'<div class="hm-empty">No learners enrolled in this course yet.</div>';
+}
+{% if role == 'admin' %}
+function toggleLessonType(){const kind=document.getElementById('lessonKind').value;document.getElementById('videoFields').style.display=kind==='Video'?'block':'none';document.getElementById('documentFields').style.display=kind==='Document'?'block':'none';document.getElementById('quizFields').style.display=kind==='Assessment'?'block':'none';document.querySelector('[name=video_file]').required=kind==='Video';document.querySelector('[name=document_file]').required=kind==='Document';filterQuizOptions();}
+function filterQuizOptions(){const course=document.getElementById('lessonCourse').value;const select=document.getElementById('lessonAssessment');[...select.options].forEach(o=>{if(o.value)o.hidden=(o.dataset.course!==course);});if(select.selectedOptions[0]&&select.selectedOptions[0].hidden)select.value='';}
+function onCourseChange(){var o=document.getElementById('lessonCourse').selectedOptions[0];var n=o&&o.dataset.weeks?Number(o.dataset.weeks):0;var w=document.getElementById('lessonWeek');w.innerHTML=n?'':'<option value="">Choose a course first</option>';for(var i=1;i<=n;i++){w.innerHTML+='<option value="'+i+'">Week '+i+'</option>';}filterQuizOptions();}
+onCourseChange();toggleLessonType();
+if(location.search.indexOf('course=')>-1){var f=document.getElementById('addContent');if(f)f.scrollIntoView();}
+{% endif %}
+drawWeekly();
+</script>{% endblock %}

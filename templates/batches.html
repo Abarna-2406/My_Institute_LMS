@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% block title %}Batches{% endblock %}
+{% block page_title %}Batches{% endblock %}
+{% block page_crumb %}Manage batch schedules, trainers and enrollment{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-header">
+    <h3><i class="fa-solid fa-layer-group"></i>&nbsp; All Batches <span class="badge badge-blue">{{ batches|length }}</span></h3>
+    <div class="page-actions">
+      <button class="btn btn-primary" onclick="openAddBatchModal()"><i class="fa-solid fa-plus"></i> Add Batch</button>
+    </div>
+  </div>
+
+  <div class="toolbar">
+    <div class="search-box">
+      <i class="fa-solid fa-magnifying-glass" style="color:var(--gray-500)"></i>
+      <input type="text" placeholder="Search batches..." data-search-for="batchesTable" oninput="applyFilters('batchesTable')">
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <table class="data-table" id="batchesTable">
+      <thead>
+        <tr><th>Batch</th><th>Course</th><th>Trainer</th><th>Dates</th><th>Enrollment</th><th>Actions</th></tr>
+      </thead>
+      <tbody>
+        {% for b in batches %}
+        <tr data-row data-id="{{ b.id }}" data-entity="batches">
+          <td class="cell-strong">{{ b.name }}</td>
+          <td>{{ course_name(b.course_id) }}</td>
+          <td>{{ trainer_name(b.trainer_id) }}</td>
+          <td class="cell-muted">{{ b.start_date }} → {{ b.end_date }}</td>
+          <td>
+            <div class="progress-wrap">
+              <div class="progress-track"><div class="progress-fill" style="width:{{ (b.enrolled / b.capacity * 100) | round }}%;"></div></div>
+              <span>{{ b.enrolled }}/{{ b.capacity }}</span>
+            </div>
+          </td>
+          <td>
+            <div class="row-actions">
+              <button class="action-btn edit" title="Edit" onclick='openEditBatchModal({{ b|tojson }})'><i class="fa-solid fa-pen"></i></button>
+              <button class="action-btn delete" title="Delete" onclick="confirmDelete('batches', {{ b.id }}, '{{ b.name|e }}')"><i class="fa-solid fa-trash"></i></button>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+        <tr class="empty-row" style="display:none;"><td colspan="6">No batches match your search.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="modal-overlay" id="batchModal">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3 id="batchModalTitle">Add Batch</h3>
+      <button class="modal-close" onclick="closeModal('batchModal')"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <form id="batchForm">
+      <div class="modal-body">
+        <div class="form-grid">
+          <div class="full form-group">
+            <label>Batch Name</label>
+            <input type="text" name="name" class="form-control" required>
+          </div>
+          <div class="form-group">
+            <label>Course</label>
+            <select name="course_id" class="form-control" required>
+              {% for c in courses %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Trainer</label>
+            <select name="trainer_id" class="form-control" required>
+              {% for t in trainers %}<option value="{{ t.id }}">{{ t.name }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Start Date</label>
+            <input type="date" name="start_date" class="form-control" required>
+          </div>
+          <div class="form-group">
+            <label>End Date</label>
+            <input type="date" name="end_date" class="form-control" required>
+          </div>
+          <input type="hidden" name="timing" id="batchTiming" value="">
+          <div class="form-group">
+            <label>Capacity</label>
+            <input type="number" name="capacity" class="form-control" min="1" required>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline" onclick="closeModal('batchModal')">Cancel</button>
+        <button type="submit" class="btn btn-primary"><i class="fa-solid fa-floppy-disk"></i> Save Batch</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+var batchEditId = null;
+function syncBatchTiming(){ document.getElementById('batchTiming').value=''; }
+function openAddBatchModal(){
+  batchEditId = null;
+  document.getElementById('batchModalTitle').innerText = 'Add Batch';
+  document.getElementById('batchForm').reset();
+  syncBatchTiming();
+  openModal('batchModal');
+}
+function openEditBatchModal(batch){
+  batchEditId = batch.id;
+  document.getElementById('batchModalTitle').innerText = 'Edit Batch';
+  document.getElementById('batchForm').reset();
+  prefillForm('batchForm', batch);
+  syncBatchTiming();
+  openModal('batchModal');
+}
+(function(){
+  const form=document.getElementById('batchForm');
+  form.addEventListener('submit',syncBatchTiming);
+  const today=new Date(); const minDate=new Date(today.getTime()-today.getTimezoneOffset()*60000).toISOString().slice(0,10);
+  const start=form.querySelector('[name="start_date"]'), end=form.querySelector('[name="end_date"]');
+  start.min=minDate; end.min=minDate;
+  start.addEventListener('change',function(){end.min=start.value||minDate;if(end.value&&end.value<start.value)end.value=start.value;});
+})();
+if (new URLSearchParams(window.location.search).get('open') === 'add') { setTimeout(openAddBatchModal, 150); }
+document.getElementById('batchForm').addEventListener('submit', function(e){
+  e.preventDefault();
+  submitEntityForm('batches', batchEditId ? 'PUT' : 'POST', this, batchEditId);
+});
+</script>
+{% endblock %}

@@ -1,0 +1,618 @@
+{% extends "base.html" %}
+{% block title %}Sessions{% endblock %}
+{% block page_title %}Sessions{% endblock %}
+{% block page_crumb %}Schedule and manage live training sessions{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-header">
+    <h3><i class="fa-solid fa-calendar-days"></i>&nbsp; {{ 'Live Session Calendar' if student_view else 'All Sessions' }} <span class="badge badge-blue">{{ sessions|length }}</span></h3>
+    {% if not student_view %}<div class="page-actions">
+      <button class="btn btn-primary" onclick="openAddSessionModal()"><i class="fa-solid fa-plus"></i> Schedule Session</button>
+    </div>{% endif %}
+  </div>
+
+  {% if not student_view %}
+  <div class="toolbar">
+    <div class="search-box">
+      <i class="fa-solid fa-magnifying-glass" style="color:var(--gray-500)"></i>
+      <input type="text" placeholder="Search sessions by topic..." data-search-for="sessionsTable" oninput="applyFilters('sessionsTable')">
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <table class="data-table" id="sessionsTable">
+      <thead>
+        <tr><th>Topic</th><th>Batch</th><th>Trainer</th><th>Date</th><th>Time</th><th>Duration</th><th>Live Link</th><th>Recording</th><th>Actions</th></tr>
+      </thead>
+      <tbody>
+        {% for s in sessions %}
+        <tr data-row data-id="{{ s.id }}" data-entity="sessions">
+          <td class="cell-strong">{{ s.topic }}</td>
+          <td>{{ batch_name(s.batch_id) }}</td>
+          <td>{{ trainer_name(s.trainer_id) }}</td>
+          <td>{{ s.date }}</td>
+          <td>{{ s.time }}</td>
+          <td>{{ s.duration }}</td>
+          <td>{% if s.class_over %}<span class="badge badge-gray">Class Over</span>{% elif not s.class_joinable and s.meeting_link %}<span class="cell-muted">Session is not started yet</span>{% elif s.meeting_link %}<a class="btn btn-sm btn-primary session-link-btn" href="{{ url_for('live_session_page', session_id=s.id) }}"><i class="fa-solid fa-video"></i> {{ 'Join & Track' if student_view else 'Join Live' }}</a>{% elif not student_view %}<button class="btn btn-sm btn-outline session-link-btn" onclick="generateJitsi({{s.id}})"><i class="fa-solid fa-link"></i> Generate Link</button>{% else %}<span class="cell-muted">Session is not started yet</span>{% endif %}</td>
+          <td>{% if s.recording_url %}<a class="btn btn-sm btn-outline session-link-btn session-recording-btn" target="_blank" rel="noopener" href="{{s.recording_url}}"><i class="fa-solid fa-play"></i> View Recording</a>{% elif not student_view %}<button class="btn btn-sm btn-outline session-link-btn session-recording-btn" onclick="openRecordingModal({{s.id}}, {{ s.recording_url|default('', true)|tojson }})"><i class="fa-solid fa-link"></i> Add Recording</button>{% else %}<span class="cell-muted">Not available</span>{% endif %}</td>
+          <td>{% if not student_view %}
+            <div class="row-actions">
+              <button class="action-btn edit" aria-label="Edit" title="Edit" onclick='openEditSessionModal({{ s|tojson }})'><i class="fa-solid fa-pen"></i></button>
+              <button class="action-btn delete" aria-label="Delete" title="Delete" onclick="confirmDelete('sessions', {{ s.id }}, '{{ s.topic|e }}')"><i class="fa-solid fa-trash"></i></button>
+            </div>{% else %}<span class="cell-muted">View / Join</span>{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+        <tr class="empty-row" style="display:none;"><td colspan="9">No sessions match your search.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.19/index.global.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.19/index.global.min.js"></script>
+  <div class="student-calendar-wrap">
+    <div class="student-calendar-toolbar">
+      <div class="student-calendar-heading">
+        <button type="button" class="student-calendar-back" id="calendarBack" aria-label="Back to previous page"><i class="fa-solid fa-chevron-left"></i> Back</button>
+        <h3 id="studentCalendarRange" class="student-calendar-month" aria-live="polite">Loading calendar…</h3>
+        <div class="student-calendar-arrows">
+          <button type="button" class="student-calendar-control icon-control" id="calendarPrev" aria-label="Previous period" title="Previous"><i class="fa-solid fa-chevron-left"></i></button>
+          <button type="button" class="student-calendar-control icon-control" id="calendarNext" aria-label="Next period" title="Next"><i class="fa-solid fa-chevron-right"></i></button>
+        </div>
+      </div>
+      <div class="student-calendar-actions">
+        <button type="button" class="student-calendar-control" id="calendarToday">Today</button>
+        <button type="button" class="student-calendar-control" id="calendarList">List</button>
+        <div class="student-calendar-views" role="group" aria-label="Calendar view">
+          <button type="button" data-calendar-view="timeGridDay">Day</button>
+          <button type="button" data-calendar-view="timeGridWeek" class="is-active">Week</button>
+          <button type="button" data-calendar-view="dayGridMonth">Month</button>
+        </div>
+      </div>
+    </div>
+    <div id="studentCalendar" class="student-calendar-fullcalendar" aria-label="Student live session calendar"></div>
+    <div class="student-calendar-legend">
+      <span><i class="legend-dot upcoming"></i> Upcoming class</span>
+      <span><i class="legend-dot completed"></i> Class over</span>
+      <span class="cell-muted">Select a class to view its details. Completed classes cannot be joined.</span>
+    </div>
+    <div class="student-session-detail-overlay" id="studentSessionDetails" hidden role="dialog" aria-modal="true" aria-labelledby="studentSessionDetailTitle">
+      <div class="student-session-detail-card">
+        <div class="student-session-detail-header">
+          <div><span class="student-session-detail-kicker">LIVE SESSION</span><h3 id="studentSessionDetailTitle">Class details</h3></div>
+          <button type="button" class="student-session-detail-close" id="studentSessionDetailClose" aria-label="Close class details"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div class="student-session-detail-status" id="studentSessionDetailStatus"></div>
+        <dl class="student-session-detail-list">
+          <div><dt><i class="fa-regular fa-calendar"></i> Date</dt><dd id="studentSessionDetailDate">—</dd></div>
+          <div><dt><i class="fa-regular fa-clock"></i> Time</dt><dd id="studentSessionDetailTime">—</dd></div>
+          <div><dt><i class="fa-solid fa-hourglass-half"></i> Duration</dt><dd id="studentSessionDetailDuration">—</dd></div>
+          <div><dt><i class="fa-solid fa-people-group"></i> Batch</dt><dd id="studentSessionDetailBatch">—</dd></div>
+          <div><dt><i class="fa-solid fa-chalkboard-user"></i> Trainer</dt><dd id="studentSessionDetailTrainer">—</dd></div>
+        </dl>
+        <p class="student-session-detail-message" id="studentSessionDetailMessage"></p>
+        <div class="student-session-detail-actions">
+          <button type="button" class="btn btn-outline" id="studentSessionDetailDone">Close</button>
+          <a href="#" class="btn btn-primary" id="studentSessionDetailJoin" hidden><i class="fa-solid fa-video"></i> Join &amp; Track</a>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+{% if not student_view %}
+<div class="modal-overlay" id="sessionModal">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3 id="sessionModalTitle">Schedule Session</h3>
+      <button class="modal-close" onclick="closeModal('sessionModal')"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <form id="sessionForm">
+      <div class="modal-body">
+        <div class="form-grid">
+          <div class="full form-group">
+            <label>Session Topic</label>
+            <input type="text" name="topic" class="form-control" required>
+          </div>
+          <div class="form-group">
+            <label>Batch</label>
+            <select name="batch_id" class="form-control" required>
+              {% for b in batches %}<option value="{{ b.id }}">{{ b.name }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Trainer</label>
+            <select name="trainer_id" class="form-control" required>
+              {% for t in trainers %}<option value="{{ t.id }}">{{ t.name }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="full form-group" id="sessionDateModeWrap">
+            <label>Session dates</label>
+            <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:center;margin:6px 0 12px;">
+              <label style="display:flex;gap:8px;align-items:center;font-weight:500;"><input type="radio" name="session_date_mode" value="today" checked> Today</label>
+              <label style="display:flex;gap:8px;align-items:center;font-weight:500;"><input type="radio" name="session_date_mode" value="custom"> Select Custom Dates</label>
+            </div>
+            <div id="sessionTodayDateWrap"><input type="date" id="sessionTodayDate" class="form-control" readonly aria-label="Today's date"></div>
+            <div id="sessionCustomDatesWrap" hidden>
+              <div class="session-multidate-picker">
+                <div class="session-calendar-heading">
+                  <button type="button" class="btn btn-outline btn-sm" id="sessionCalendarPrev" aria-label="Previous month"><i class="fa-solid fa-chevron-left"></i></button>
+                  <strong id="sessionCalendarMonth" aria-live="polite"></strong>
+                  <button type="button" class="btn btn-outline btn-sm" id="sessionCalendarNext" aria-label="Next month"><i class="fa-solid fa-chevron-right"></i></button>
+                </div>
+                <div class="session-calendar-grid session-calendar-weekdays"><span>Su</span><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span></div>
+                <div id="sessionCalendarDays" class="session-calendar-grid"></div>
+              </div>
+              <div class="session-selected-dates"><strong>Selected dates</strong><div id="sessionSelectedDateChips"><span class="form-help">No dates selected</span></div></div>
+              <small class="form-help">Click multiple dates in this single calendar. Each selected date creates a separate session.</small>
+            </div>
+            <input type="hidden" name="date" id="sessionDateValue">
+          </div>
+          <div class="form-group">
+            <label>Time</label>
+            <input type="time" id="sessionTimeInput" class="form-control" required>
+            <input type="hidden" name="time" id="sessionTimeValue">
+          </div>
+          <div class="form-group">
+            <label>Duration</label>
+            <div class="time-pair duration-pair"><div><input type="text" inputmode="numeric" pattern="[0-9]{1,2}" maxlength="2" id="sessionDurationHours" class="form-control" value="00" required><small>hr</small></div><span>:</span><div><input type="text" inputmode="numeric" pattern="[0-9]{1,2}" maxlength="2" id="sessionDurationMinutes" class="form-control" value="00" required><small>min</small></div></div>
+            <input type="hidden" name="duration" id="sessionDurationValue">
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline" onclick="closeModal('sessionModal')">Cancel</button>
+        <button type="submit" class="btn btn-primary"><i class="fa-solid fa-floppy-disk"></i> Save Session</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="modal-overlay" id="recordingModal">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3><i class="fa-solid fa-video"></i> Add Session Recording</h3>
+      <button class="modal-close" type="button" onclick="closeModal('recordingModal')"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>Recording URL</label>
+        <input type="url" id="recordingUrlInput" class="form-control" placeholder="https://drive.google.com/... or https://youtube.com/..." required>
+        <div class="form-help">Paste the recording link shared by the trainer or institute.</div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-outline" onclick="closeModal('recordingModal')">Cancel</button>
+      <button type="button" class="btn btn-primary" onclick="saveRecording()"><i class="fa-solid fa-floppy-disk"></i> Save Recording</button>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+
+<style>
+.session-multidate-picker{max-width:370px;padding:14px;border:1px solid var(--border-color,#d7e0ed);border-radius:14px;background:var(--card-bg,#fff);}
+.session-calendar-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;}
+.session-calendar-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:5px;text-align:center;}
+.session-calendar-weekdays{font-size:.82rem;color:var(--muted-color,#64748b);font-weight:600;margin-bottom:7px;}
+.session-calendar-empty{height:36px;}
+.session-calendar-day{height:36px;border:1px solid transparent;border-radius:9px;background:transparent;color:var(--text-color,#243247);cursor:pointer;}
+.session-calendar-day:hover:not(:disabled){background:#e8f1ff;border-color:#9cc2f8;color:#174ea6;}
+.session-calendar-day.is-selected{background:#2563eb;color:#fff;border-color:#2563eb;font-weight:700;}
+.session-calendar-day.is-today{outline:1px solid #2563eb;outline-offset:-2px;}
+.session-calendar-day.is-past{opacity:.35;cursor:not-allowed;}
+.session-selected-dates{margin:12px 0 6px;display:grid;gap:8px;}
+#sessionSelectedDateChips{display:flex;flex-wrap:wrap;gap:6px;}
+.session-date-chip{border:1px solid #bfd5f5;background:#edf5ff;color:#174ea6;border-radius:18px;padding:5px 10px;cursor:pointer;font-size:.85rem;}
+</style>
+
+{% block scripts %}
+<script>
+{% if not student_view %}
+var sessionEditId = null;
+function formatSessionTime(value){
+  if(!value) return '';
+  let [h,m]=value.split(':').map(Number);
+  const period=h>=12?'PM':'AM';
+  return (h%12||12)+':'+String(m).padStart(2,'0')+' '+period;
+}
+function syncSessionFields(){
+  document.getElementById('sessionTimeValue').value=formatSessionTime(document.getElementById('sessionTimeInput').value);
+  const h=String(Math.min(99,Math.max(0,Number(document.getElementById('sessionDurationHours').value)||0))).padStart(2,'0');
+  const m=String(Math.min(59,Math.max(0,Number(document.getElementById('sessionDurationMinutes').value)||0))).padStart(2,'0');
+  document.getElementById('sessionDurationHours').value=h; document.getElementById('sessionDurationMinutes').value=m;
+  document.getElementById('sessionDurationValue').value=h+' hr:'+m+' min';
+}
+function setSessionTime(value){
+  const match=String(value||'').match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+  if(match){
+    let h=Number(match[1])%12; if(match[3].toUpperCase()==='PM')h+=12;
+    document.getElementById('sessionTimeInput').value=String(h).padStart(2,'0')+':'+match[2];
+  }else{document.getElementById('sessionTimeInput').value='';}
+}
+function setSessionDuration(value){
+  const match=String(value||'').match(/(\d+)\s*hr?\s*:?\s*(\d+)\s*min/i);
+  const alt=String(value||'').match(/(\d+)\s*(?:hours?|hrs?)\s*(?:(\d+)\s*(?:minutes?|mins?))?/i);
+  const m=match||alt;
+  document.getElementById('sessionDurationHours').value=m?String(Number(m[1])).padStart(2,'0'):'00';
+  document.getElementById('sessionDurationMinutes').value=m?String(Number(m[2]||0)).padStart(2,'0'):'00';
+}
+['sessionTimeInput','sessionDurationHours','sessionDurationMinutes'].forEach(id=>document.getElementById(id).addEventListener('change',syncSessionFields));
+function localISODate(){
+  const d=new Date(); d.setMinutes(d.getMinutes()-d.getTimezoneOffset()); return d.toISOString().slice(0,10);
+}
+let selectedCustomSessionDates = new Set();
+let sessionCalendarMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+function dateToLocalISO(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+function setSessionDateMinimum(){
+  const minDate=localISODate();
+  const todayInput=document.getElementById('sessionTodayDate');
+  if(todayInput){todayInput.value=minDate;todayInput.min=minDate;}
+  const hidden=document.getElementById('sessionDateValue'); if(hidden && !hidden.value) hidden.value=minDate;
+  renderSessionCalendar();
+}
+function renderSessionCalendar(){
+  const monthNode=document.getElementById('sessionCalendarMonth'), daysNode=document.getElementById('sessionCalendarDays');
+  if(!monthNode||!daysNode)return;
+  const y=sessionCalendarMonth.getFullYear(), m=sessionCalendarMonth.getMonth();
+  monthNode.textContent=sessionCalendarMonth.toLocaleDateString(undefined,{month:'long',year:'numeric'});
+  daysNode.innerHTML='';
+  const firstDay=new Date(y,m,1).getDay(), count=new Date(y,m+1,0).getDate(), today=localISODate();
+  for(let i=0;i<firstDay;i++){const blank=document.createElement('span');blank.className='session-calendar-empty';daysNode.appendChild(blank);}
+  for(let day=1;day<=count;day++){
+    const d=new Date(y,m,day), iso=dateToLocalISO(d), b=document.createElement('button');
+    b.type='button';b.className='session-calendar-day';b.textContent=day;b.dataset.date=iso;
+    if(iso<today){b.disabled=true;b.classList.add('is-past');}
+    if(selectedCustomSessionDates.has(iso))b.classList.add('is-selected');
+    if(iso===today)b.classList.add('is-today');
+    b.setAttribute('aria-pressed',selectedCustomSessionDates.has(iso)?'true':'false');
+    b.addEventListener('click',function(){if(selectedCustomSessionDates.has(iso))selectedCustomSessionDates.delete(iso);else selectedCustomSessionDates.add(iso);syncSelectedSessionDates();renderSessionCalendar();});
+    daysNode.appendChild(b);
+  }
+  const prev=new Date(y,m-1,1), next=new Date(y,m+1,1);
+  document.getElementById('sessionCalendarPrev').disabled=dateToLocalISO(prev)<dateToLocalISO(new Date(new Date().getFullYear(),new Date().getMonth(),1));
+  document.getElementById('sessionCalendarNext').disabled=false;
+}
+function selectedSessionDates(){
+  const mode=document.querySelector('input[name="session_date_mode"]:checked')?.value||'today';
+  if(mode==='today') return [localISODate()];
+  return Array.from(selectedCustomSessionDates).sort();
+}
+function syncSelectedSessionDates(){
+  const mode=document.querySelector('input[name="session_date_mode"]:checked')?.value||'today';
+  document.getElementById('sessionTodayDateWrap').hidden=mode!=='today';
+  document.getElementById('sessionCustomDatesWrap').hidden=mode!=='custom';
+  const dates=selectedSessionDates(); document.getElementById('sessionDateValue').value=dates[0]||'';
+  document.getElementById('sessionDateValue').required=true;
+  const chips=document.getElementById('sessionSelectedDateChips');
+  if(chips){chips.innerHTML='';if(!dates.length){chips.innerHTML='<span class="form-help">No dates selected</span>';}else dates.forEach(function(date){const chip=document.createElement('button');chip.type='button';chip.className='session-date-chip';chip.textContent=new Date(date+'T12:00:00').toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'})+' ×';chip.title='Remove '+date;chip.addEventListener('click',function(){selectedCustomSessionDates.delete(date);syncSelectedSessionDates();renderSessionCalendar();});chips.appendChild(chip);});}
+}
+document.querySelectorAll('input[name="session_date_mode"]').forEach(function(r){r.addEventListener('change',function(){if(this.value==='custom'&&!selectedCustomSessionDates.size){selectedCustomSessionDates.clear();}syncSelectedSessionDates();renderSessionCalendar();});});
+document.getElementById('sessionCalendarPrev').addEventListener('click',function(){sessionCalendarMonth=new Date(sessionCalendarMonth.getFullYear(),sessionCalendarMonth.getMonth()-1,1);renderSessionCalendar();});
+document.getElementById('sessionCalendarNext').addEventListener('click',function(){sessionCalendarMonth=new Date(sessionCalendarMonth.getFullYear(),sessionCalendarMonth.getMonth()+1,1);renderSessionCalendar();});
+function openAddSessionModal(){
+  sessionEditId=null;
+  document.getElementById('sessionModalTitle').innerText='Schedule Session';
+  document.getElementById('sessionForm').reset();
+  selectedCustomSessionDates.clear(); sessionCalendarMonth=new Date(new Date().getFullYear(),new Date().getMonth(),1); renderSessionCalendar();
+  document.querySelector('input[name="session_date_mode"][value="today"]').checked=true;
+  setSessionDateMinimum();
+  document.getElementById('sessionDurationHours').value='00'; document.getElementById('sessionDurationMinutes').value='00'; syncSessionFields(); syncSelectedSessionDates();
+  openModal('sessionModal');
+}
+function openEditSessionModal(s){
+  sessionEditId=s.id;
+  document.getElementById('sessionModalTitle').innerText='Edit Session';
+  document.getElementById('sessionForm').reset();
+  selectedCustomSessionDates.clear(); sessionCalendarMonth=new Date(new Date().getFullYear(),new Date().getMonth(),1); renderSessionCalendar();
+  prefillForm('sessionForm',s);
+  document.querySelector('input[name="session_date_mode"][value="today"]').checked=true;
+  setSessionDateMinimum();
+  document.getElementById('sessionTodayDate').value=s.date||localISODate();
+  document.getElementById('sessionDateValue').value=s.date||localISODate();
+  setSessionTime(s.time); setSessionDuration(s.duration); syncSessionFields();
+  document.getElementById('sessionDateModeWrap').style.opacity='.65';
+  document.querySelectorAll('input[name="session_date_mode"]').forEach(r=>r.disabled=true);
+  document.getElementById('sessionTodayDateWrap').hidden=false; document.getElementById('sessionCustomDatesWrap').hidden=true;
+  openModal('sessionModal');
+}
+// Restore editable date-mode controls when the modal is opened for a new session.
+const originalOpenAddSessionModal=openAddSessionModal;
+openAddSessionModal=function(){document.getElementById('sessionDateModeWrap').style.opacity='1';document.querySelectorAll('input[name="session_date_mode"]').forEach(r=>r.disabled=false);originalOpenAddSessionModal();};
+document.getElementById('sessionForm').addEventListener('submit', async function(e){
+  e.preventDefault();
+  syncSessionFields();
+  const dates=selectedSessionDates();
+  const today=localISODate();
+  if(!dates.length){showToast('Select at least one session date.','error');return;}
+  if(new Set(dates).size!==dates.length){showToast('Remove duplicate dates before saving.','error');return;}
+  if(dates.some(d=>d<today)){showToast('Session dates cannot be in the past.','error');return;}
+  if(sessionEditId && dates.length!==1){showToast('Edit one session date at a time.','error');return;}
+  const formData=new FormData(this), payload={};
+  formData.forEach((v,k)=>{if(k!=='session_date_mode' && k!=='date')payload[k]=v;});
+  const btn=this.querySelector('[type="submit"]'); const original=btn.innerHTML; btn.disabled=true; btn.innerHTML='<i class="fa-solid fa-spinner fa-spin"></i> Saving...';
+  try{
+    for(const date of (sessionEditId?[document.getElementById('sessionDateValue').value||dates[0]]:dates)){
+      payload.date=date;
+      const url='/api/data/sessions'+(sessionEditId?'/'+sessionEditId:'');
+      const response=await fetch(url,{method:sessionEditId?'PUT':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+      const result=await response.json();
+      if(!response.ok) throw new Error(result.error||'Could not save session for '+date);
+    }
+    showToast(sessionEditId?'Session updated successfully':(dates.length===1?'Session scheduled successfully':dates.length+' sessions scheduled successfully'),'success');
+    setTimeout(()=>window.location.reload(),500);
+  }catch(err){showToast(err.message||'Unable to save sessions.','error');}
+  finally{btn.disabled=false;btn.innerHTML=original;}
+});
+function generateJitsi(id){fetch('/api/session/'+id+'/generate-link',{method:'POST'}).then(r=>r.json()).then(d=>{if(d.link){showToast('Jitsi link generated','success');location.reload();}});}
+var recordingSessionId = null;
+function openRecordingModal(id, existing){
+  recordingSessionId = id;
+  var input = document.getElementById('recordingUrlInput');
+  input.value = existing && existing !== 'null' ? existing : '';
+  openModal('recordingModal');
+  setTimeout(function(){ input.focus(); }, 80);
+}
+function saveRecording(){
+  var input = document.getElementById('recordingUrlInput');
+  var u = (input.value || '').trim();
+  if(!recordingSessionId || !u){ showToast('Please enter a recording URL','error'); return; }
+  var f = new FormData(); f.append('recording_url', u);
+  fetch('/api/session/'+recordingSessionId+'/recording',{method:'POST',body:f})
+    .then(function(r){ return r.json().then(function(d){ return {ok:r.ok,data:d}; }); })
+    .then(function(result){
+      if(!result.ok){ showToast(result.data.error || 'Unable to save recording','error'); return; }
+      showToast('Recording link saved successfully','success');
+      closeModal('recordingModal');
+      setTimeout(function(){ location.reload(); }, 350);
+    })
+    .catch(function(){ showToast('Unable to save recording link','error'); });
+}
+if(new URLSearchParams(location.search).get('open')==='add'){setTimeout(openAddSessionModal,150);}
+{% endif %}
+
+{% if student_view %}
+// FullCalendar provides real day/week/month/list views, time-grid navigation and responsive event rendering.
+const studentCalendarSessions = {{ sessions|tojson }};
+const studentCalendarBatches = {{ batches|tojson }};
+const studentCalendarTrainers = {{ trainers|tojson }};
+const studentCalendarNode = document.getElementById('studentCalendar');
+const studentLiveBase = {{ url_for('live_session_page', session_id=0)|tojson }};
+const studentSessionsPath = {{ url_for('sessions_page')|tojson }};
+let studentCalendar = null;
+
+function calendarDurationMinutes(value) {
+  const text = String(value || '').trim().toLowerCase();
+  let m = text.match(/(\d+)\s*(?:hr|hrs|hour|hours|h)\s*:?\s*(\d+)\s*(?:min|mins|minute|minutes|m)?/);
+  if (m) return Math.max(1, Number(m[1]) * 60 + Math.min(59, Number(m[2])));
+  m = text.match(/(\d{1,3}):(\d{1,2})/);
+  if (m) return Math.max(1, Number(m[1]) * 60 + Math.min(59, Number(m[2])));
+  m = text.match(/(\d+(?:\.\d+)?)\s*(hour|hours|hr|hrs|h)\b/);
+  if (m) return Math.max(1, Math.round(Number(m[1]) * 60));
+  m = text.match(/(\d+(?:\.\d+)?)/);
+  return m ? Math.max(1, Math.round(Number(m[1]))) : 60;
+}
+function calendarStartDateTime(sessionItem) {
+  const date = String(sessionItem.date || '').slice(0, 10);
+  const raw = String(sessionItem.time || '').trim().toUpperCase();
+  let m = raw.match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)$/);
+  let hours, minutes;
+  if (m) {
+    hours = Number(m[1]) % 12;
+    if (m[3] === 'PM') hours += 12;
+    minutes = Number(m[2]);
+  } else {
+    m = raw.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+    if (!m) return null;
+    hours = Number(m[1]); minutes = Number(m[2]);
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || hours > 23 || minutes > 59) return null;
+  return date + 'T' + String(hours).padStart(2, '0') + ':' + String(minutes).padStart(2, '0') + ':00';
+}
+function calendarParseLocalDate(iso) {
+  const m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+  if (!m) return null;
+  return new Date(Number(m[1]), Number(m[2])-1, Number(m[3]), Number(m[4]), Number(m[5]));
+}
+function calendarEventData(items) {
+  return items.map(item => {
+    const start = calendarStartDateTime(item);
+    if (!start) return null;
+    const startDate = calendarParseLocalDate(start);
+    const minutes = calendarDurationMinutes(item.duration);
+    const endDate = new Date(startDate.getTime() + minutes * 60000);
+    const end = endDate.getFullYear() + '-' + String(endDate.getMonth()+1).padStart(2,'0') + '-' + String(endDate.getDate()).padStart(2,'0') + 'T' + String(endDate.getHours()).padStart(2,'0') + ':' + String(endDate.getMinutes()).padStart(2,'0') + ':00';
+    const status = String(item.status || '').trim().toLowerCase();
+    const now = new Date();
+    const isOver = Boolean(item.class_over) || ['completed','class over','cancelled','canceled'].includes(status) || endDate <= now;
+    const hasStarted = startDate <= now && !isOver;
+    const batch = studentCalendarBatches.find(b => String(b.id) === String(item.batch_id));
+    const trainer = studentCalendarTrainers.find(t => String(t.id) === String(item.trainer_id));
+    return {
+      id: String(item.id), title: item.topic || 'Live session', start, end,
+      classNames: isOver ? ['student-calendar-event-over'] : ['student-calendar-event-upcoming'],
+      extendedProps: {
+        sessionId: item.id,
+        meetingLink: item.meeting_link || '',
+        classOver: isOver,
+        classLabel: item.class_label || (isOver ? 'Class Over' : (hasStarted ? 'Ongoing' : 'Session is not started yet')),
+        classStarted: hasStarted,
+        batchId: item.batch_id,
+        batchName: batch ? batch.name : '—',
+        trainerName: trainer ? trainer.name : '—',
+        duration: item.duration || ''
+      }
+    };
+  }).filter(Boolean);
+}
+function calendarRangeLabel(info) {
+  const start = info.start;
+  const last = new Date(info.end.getTime() - 86400000);
+  const fmt = (d, options) => d.toLocaleDateString(undefined, options);
+  if (info.view.type === 'dayGridMonth' || info.view.type === 'listMonth') return fmt(start, {month:'long', year:'numeric'});
+  if (info.view.type === 'timeGridDay') return fmt(start, {weekday:'long', month:'short', day:'numeric', year:'numeric'});
+  const sameYear = start.getFullYear() === last.getFullYear();
+  const left = fmt(start, {month:'short', day:'numeric'});
+  const right = sameYear ? fmt(last, {month:'short', day:'numeric', year:'numeric'}) : fmt(last, {month:'short', day:'numeric', year:'numeric'});
+  return left + ' – ' + right;
+}
+function updateCalendarToolbar(info) {
+  document.getElementById('studentCalendarRange').textContent = calendarRangeLabel(info);
+  document.querySelectorAll('[data-calendar-view]').forEach(button => {
+    const active = button.dataset.calendarView === info.view.type;
+    button.classList.toggle('is-active', active);
+    button.setAttribute('aria-pressed', active ? 'true' : 'false');
+  });
+  document.getElementById('calendarList').classList.toggle('is-active', info.view.type.startsWith('list'));
+}
+function calendarStartOver(event) {
+  if (event.extendedProps.classOver || (event.end && event.end <= new Date())) return true;
+  return false;
+}
+function openStudentSessionDetails(ev) {
+  const overlay = document.getElementById('studentSessionDetails');
+  if (!overlay) return;
+  const props = ev.extendedProps || {};
+  const isOver = calendarStartOver(ev);
+  const hasLink = Boolean(props.meetingLink);
+  const fmtDate = value => value ? value.toLocaleDateString(undefined, {weekday:'long', year:'numeric', month:'long', day:'numeric'}) : '—';
+  const fmtTime = value => value ? value.toLocaleTimeString(undefined, {hour:'numeric', minute:'2-digit'}) : '—';
+  document.getElementById('studentSessionDetailTitle').textContent = ev.title || 'Live session';
+  document.getElementById('studentSessionDetailDate').textContent = fmtDate(ev.start);
+  document.getElementById('studentSessionDetailTime').textContent = fmtTime(ev.start) + (ev.end ? ' – ' + fmtTime(ev.end) : '');
+  document.getElementById('studentSessionDetailDuration').textContent = props.duration || 'Not specified';
+  document.getElementById('studentSessionDetailBatch').textContent = props.batchName || '—';
+  document.getElementById('studentSessionDetailTrainer').textContent = props.trainerName || '—';
+  const status = document.getElementById('studentSessionDetailStatus');
+  const hasStarted = Boolean(props.classStarted) || (ev.start && ev.start <= new Date() && (!ev.end || ev.end > new Date()));
+  status.textContent = isOver ? 'Class Over' : (hasStarted ? (hasLink ? 'Ongoing class' : 'Live link not ready') : 'Session is not started yet');
+  status.className = 'student-session-detail-status ' + (isOver ? 'is-over' : (hasLink ? 'is-upcoming' : 'is-pending'));
+  const message = document.getElementById('studentSessionDetailMessage');
+  message.textContent = isOver ? 'This session has ended. Joining is no longer available.' : (!hasStarted ? 'Session is not started yet. Join & Track will be available at the scheduled time.' : (hasLink ? 'Your live class is ongoing. Select Join & Track to enter the session.' : 'The trainer has not generated the live session link yet. Please check again later.'));
+  const join = document.getElementById('studentSessionDetailJoin');
+  join.href = studentLiveBase.replace(/0$/, String(props.sessionId));
+  join.hidden = isOver || !hasStarted || !hasLink;
+  overlay.hidden = false;
+  document.body.style.overflow = 'hidden';
+  document.getElementById('studentSessionDetailClose').focus();
+}
+function closeStudentSessionDetails() {
+  const overlay = document.getElementById('studentSessionDetails');
+  if (overlay) overlay.hidden = true;
+  document.body.style.overflow = '';
+}
+
+function initStudentCalendar() {
+  if (!studentCalendarNode) return;
+  if (!window.FullCalendar) {
+    studentCalendarNode.innerHTML = '<div class="student-calendar-unavailable"><i class="fa-solid fa-triangle-exclamation"></i><strong>Calendar could not load</strong><span>Please check your internet connection and refresh this page.</span><a href="' + studentSessionsPath + '">Reload sessions</a></div>';
+    return;
+  }
+  studentCalendar = new FullCalendar.Calendar(studentCalendarNode, {
+    initialView: 'timeGridWeek',
+    initialDate: new Date(),
+    headerToolbar: false,
+    height: 560,
+    expandRows: true,
+    nowIndicator: true,
+    firstDay: 0,
+    allDaySlot: false,
+    slotMinTime: '00:00:00',
+    slotMaxTime: '24:00:00',
+    scrollTime: '00:00:00',
+    slotDuration: '01:00:00',
+    dayHeaderFormat: {weekday:'short', day:'numeric'},
+    navLinks: true,
+    selectable: false,
+    displayEventTime: true,
+    eventTimeFormat: {hour:'numeric', minute:'2-digit', meridiem:'short'},
+    noEventsContent: 'No sessions in this view',
+    events: calendarEventData(studentCalendarSessions),
+    datesSet: updateCalendarToolbar,
+    eventContent: function(arg) {
+      const isCompactView = arg.view.type.startsWith('timeGrid') || arg.view.type.startsWith('dayGrid');
+      if (isCompactView) {
+        // Time-grid events can be shorter than two lines. Keep the visible label on one
+        // line so it remains inside the event bar instead of spilling into the next row.
+        const line = document.createElement('div');
+        line.className = 'student-calendar-compact-event';
+        if (arg.timeText) {
+          const time = document.createElement('span');
+          time.className = 'student-calendar-event-time';
+          time.textContent = arg.timeText;
+          line.appendChild(time);
+        }
+        const title = document.createElement('span');
+        title.className = 'student-calendar-event-title';
+        title.textContent = arg.event.title;
+        line.appendChild(title);
+        return {domNodes:[line]};
+      }
+      // List view has more vertical room, so show the full title and the session status.
+      const wrapper = document.createElement('div');
+      wrapper.className = 'student-calendar-list-event';
+      const title = document.createElement('div');
+      title.className = 'student-calendar-event-title-list';
+      title.textContent = arg.event.title;
+      const meta = document.createElement('div');
+      meta.className = 'student-calendar-event-meta-list';
+      meta.textContent = calendarStartOver(arg.event) ? 'Class Over' : (arg.event.extendedProps.meetingLink ? 'Upcoming class · Select to view details' : 'Live link not ready');
+      wrapper.append(title, meta);
+      return {domNodes:[wrapper]};
+    },
+    eventDidMount: function(arg) {
+      const ev = arg.event;
+      const status = calendarStartOver(ev) ? 'Class Over' : (ev.extendedProps.meetingLink ? 'Upcoming class' : 'Live link not ready');
+      const fmtDate = value => value ? value.toLocaleDateString(undefined, {weekday:'long', year:'numeric', month:'long', day:'numeric'}) : 'Date unavailable';
+      const fmtTime = value => value ? value.toLocaleTimeString(undefined, {hour:'numeric', minute:'2-digit'}) : '';
+      const range = fmtTime(ev.start) + (ev.end ? ' – ' + fmtTime(ev.end) : '');
+      arg.el.title = [ev.title, fmtDate(ev.start), range, 'Duration: ' + (ev.extendedProps.duration || 'Not specified'), 'Batch: ' + (ev.extendedProps.batchName || '—'), 'Trainer: ' + (ev.extendedProps.trainerName || '—'), 'Status: ' + status].join('\n');
+      arg.el.setAttribute('aria-label', arg.el.title.replace(/\n/g, '. '));
+    },
+    eventClick: function(info) {
+      info.jsEvent.preventDefault();
+      openStudentSessionDetails(info.event);
+    }
+  });
+  studentCalendar.render();
+  document.getElementById('calendarBack').addEventListener('click', function(){ goBackSafely(); });
+  document.getElementById('calendarPrev').addEventListener('click', function(){ studentCalendar.prev(); });
+  document.getElementById('calendarNext').addEventListener('click', function(){ studentCalendar.next(); });
+  document.getElementById('calendarToday').addEventListener('click', function(){ studentCalendar.today(); });
+  document.getElementById('studentSessionDetailClose').addEventListener('click', closeStudentSessionDetails);
+  document.getElementById('studentSessionDetailDone').addEventListener('click', closeStudentSessionDetails);
+  document.getElementById('studentSessionDetails').addEventListener('click', function(event){
+    if (event.target === this) closeStudentSessionDetails();
+  });
+  document.addEventListener('keydown', function(event){
+    if (event.key === 'Escape' && !document.getElementById('studentSessionDetails').hidden) closeStudentSessionDetails();
+  });
+  document.getElementById('calendarList').addEventListener('click', function(){
+    const view = studentCalendar.view.type;
+    studentCalendar.changeView(view.startsWith('list') ? 'timeGridWeek' : 'listWeek');
+  });
+  document.querySelectorAll('[data-calendar-view]').forEach(button => button.addEventListener('click', function(){
+    studentCalendar.changeView(button.dataset.calendarView);
+  }));
+  // Reflect the end time even if the student's calendar remains open while a class is running.
+  window.setInterval(function(){
+    if (!studentCalendar) return;
+    let changed = false;
+    studentCalendar.getEvents().forEach(ev => {
+      if (!ev.extendedProps.classOver && ev.end && ev.end <= new Date()) {
+        ev.setExtendedProp('classOver', true);
+        ev.setExtendedProp('classLabel', 'Class Over');
+        ev.setProp('backgroundColor', '#5c6f8a');
+        ev.setProp('borderColor', '#5c6f8a');
+        changed = true;
+      }
+    });
+    if (changed) studentCalendar.rerenderEvents();
+  }, 30000);
+}
+initStudentCalendar();
+{% endif %}
+</script>
+{% endblock %}

@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{% block title %}Dashboard{% endblock %} · <span class="notranslate" translate="no">{{ institution_name }}</span></title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+</head>
+<body class="{% block body_class %}{% endblock %}">
+
+<div class="app-shell">
+
+  <!-- SIDEBAR (floating icon rail) -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-brand" title="{{ institution_name }}">
+      <div class="logo-badge"><i class="fa-solid fa-graduation-cap"></i></div>
+      <strong><span class="notranslate" translate="no">{{ institution_name }}</span></strong>
+    </div>
+    <nav class="sidebar-nav">
+      {% if session.get('user_role') == 'admin' %}
+      <a href="{{ url_for('home') }}" title="Home" class="{{ 'active' if request.endpoint=='home' }}"><span class="ic"><i class="fa-solid fa-house"></i></span><span class="lbl">Home</span></a>
+      <div class="nav-section-title">Management</div>
+      <a href="{{ url_for('guardians_page') }}" title="Parents / Guardian Details" class="{{ 'active' if request.endpoint=='guardians_page' }}"><span class="ic"><i class="fa-solid fa-people-roof"></i></span><span class="lbl">Guardians</span></a>
+      {% elif session.get('user_role') == 'student' %}
+      <div class="nav-section-title">My Learning</div>
+      <a href="{{ url_for('courses_page') }}" title="My Courses" class="{{ 'active' if request.endpoint=='courses_page' }}"><span class="ic"><i class="fa-solid fa-book-open"></i></span><span class="lbl">My Courses</span></a>
+      {% elif session.get('user_role') == 'trainer' %}
+      <div class="nav-section-title">My Assigned Data</div>
+      <a href="{{ url_for('courses_page') }}" title="My Courses" class="{{ 'active' if request.endpoint=='courses_page' }}"><span class="ic"><i class="fa-solid fa-book-open"></i></span><span class="lbl">My Courses</span></a>
+      <a href="{{ url_for('students_page') }}" title="My Students" class="{{ 'active' if request.endpoint=='students_page' }}"><span class="ic"><i class="fa-solid fa-user-graduate"></i></span><span class="lbl">My Students</span></a>
+      {% endif %}
+
+      <div class="nav-section-title">Learning</div>
+      <a href="{{ url_for('dashboard') }}" title="Dashboard" class="{{ 'active' if request.endpoint=='dashboard' }}"><span class="ic"><i class="fa-solid fa-gauge-high"></i></span><span class="lbl">Dashboard</span></a>
+      <a href="{{ url_for('attendance_page') }}" title="Attendance" class="{{ 'active' if request.endpoint=='attendance_page' }}"><span class="ic"><i class="fa-solid fa-clipboard-check"></i></span><span class="lbl">Attendance</span></a>
+      <a href="{{ url_for('announcements_page') }}" title="Announcements & Materials" class="{{ 'active' if request.endpoint=='announcements_page' }}"><span class="ic"><i class="fa-solid fa-folder-open"></i></span><span class="lbl">Announce &amp; Materials</span></a>
+      {% if session.get('user_role') in ['admin','trainer'] %}<a href="{{ url_for('course_content_page') }}" title="Course Content" class="{{ 'active' if request.endpoint=='course_content_page' }}"><span class="ic"><i class="fa-solid fa-photo-film"></i></span><span class="lbl">Course Content</span></a>{% endif %}
+      {% if session.get('user_role') == 'student' %}<a href="{{ url_for('my_learning') }}" title="My Learning" class="{{ 'active' if request.endpoint=='my_learning' }}"><span class="ic"><i class="fa-solid fa-book-open-reader"></i></span><span class="lbl">My Learning</span></a>{% endif %}
+      <a href="{{ url_for('certificates_page') }}" title="Certificates" class="{{ 'active' if request.endpoint=='certificates_page' }}"><span class="ic"><i class="fa-solid fa-certificate"></i></span><span class="lbl">Certificates</span></a>
+
+      {% if session.get('user_role') in ['admin','trainer','student'] %}
+      <a href="{{ url_for('reports_page') }}" title="Report" class="{{ 'active' if request.endpoint=='reports_page' }}"><span class="ic"><i class="fa-solid fa-chart-column"></i></span><span class="lbl">Report</span></a>
+      {% endif %}
+      {% if session.get('user_role') == 'admin' %}
+      <a href="{{ url_for('payments_page') }}" title="Payments" class="{{ 'active' if request.endpoint=='payments_page' }}"><span class="ic"><i class="fa-solid fa-wallet"></i></span><span class="lbl">Payments</span></a>
+      {% endif %}
+      {% if session.get('user_role') in ['admin','trainer'] %}
+      <a href="{{ url_for('salaries_page') }}" title="Trainer Salaries" class="{{ 'active' if request.endpoint=='salaries_page' }}"><span class="ic"><i class="fa-solid fa-money-check-dollar"></i></span><span class="lbl">Salaries</span></a>
+      {% endif %}
+
+      <div class="nav-section-title">Sessions &amp; Community</div>
+      <a href="{{ url_for('sessions_page') }}" title="Live Sessions" class="{{ 'active' if request.endpoint=='sessions_page' }}"><span class="ic"><i class="fa-solid fa-video-camera"></i></span><span class="lbl">Live Sessions</span></a>
+      <a href="{{ url_for('recordings_page') }}" title="Live Recordings" class="{{ 'active' if request.endpoint=='recordings_page' }}"><span class="ic"><i class="fa-solid fa-video"></i></span><span class="lbl">Recordings</span></a>
+      <a href="{{ url_for('discussion_forum') }}" title="Discussion Forum" class="{{ 'active' if request.endpoint=='discussion_forum' }}"><span class="ic"><i class="fa-solid fa-comments"></i></span><span class="lbl">Discussions</span></a>
+    </nav>
+  </aside>
+
+  <div class="overlay-backdrop" id="overlayBackdrop" onclick="closeSidebar()"></div>
+
+  <!-- MAIN -->
+  <div class="main-wrap">
+    <header class="topbar">
+      <div class="topbar-left">
+        <button class="sidebar-toggle" onclick="toggleSidebar()"><i class="fa-solid fa-bars"></i></button>
+        <button class="global-back" type="button" onclick="goBackSafely()" aria-label="Go back" title="Go back"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i></button>
+        <div class="page-title">
+          {% block page_title %}Dashboard{% endblock %}
+          <span class="crumb">{% block page_crumb %}Overview of your institute{% endblock %}</span>
+        </div>
+      </div>
+      <div class="topbar-right"><div class="topbar-tools"><select id="languageSelect" class="topbar-select" title="Language"><option value="en">English</option>
+<option value="ta">தமிழ்</option><option value="hi">हिन्दी</option><option value="te">తెలుగు</option><option value="ml">മലയാളം</option><option value="kn">ಕನ್ನಡ</option><option value="bn">বাংলা</option><option value="mr">मराठी</option><option value="gu">ગુજરાતી</option><option value="pa">ਪੰਜਾਬੀ</option><option value="or">ଓଡ଼ିଆ</option><option value="as">অসমীয়া</option><option value="ur">اردو</option>
+<option value="ne">नेपाली</option><option value="si">සිංහල</option><option value="th">ไทย</option><option value="vi">Tiếng Việt</option><option value="id">Bahasa Indonesia</option><option value="ms">Bahasa Melayu (Malaysia)</option><option value="fil">Filipino</option>
+<option value="zh-CN">简体中文</option><option value="zh-TW">繁體中文</option><option value="ja">日本語</option><option value="ko">한국어</option>
+<option value="es">Español</option><option value="fr">Français</option><option value="de">Deutsch</option><option value="it">Italiano</option><option value="pt">Português</option><option value="nl">Nederlands</option><option value="ru">Русский</option><option value="uk">Українська</option><option value="pl">Polski</option><option value="tr">Türkçe</option><option value="ar">العربية</option><option value="fa">فارسی</option><option value="he">עברית</option></select><button class="theme-toggle" id="reminderToggle" type="button" title="Enable reminder notifications" aria-label="Enable reminder notifications"><i class="fa-regular fa-bell"></i></button><button class="theme-toggle" id="themeToggle" type="button" title="Toggle theme"><i class="fa-solid fa-moon"></i></button></div>
+        <div class="topbar-search">
+          <i class="fa-solid fa-magnifying-glass" style="color:var(--gray-500)"></i>
+          <input id="globalQuickSearch" type="search" placeholder="Search students, courses, batches..." autocomplete="off" aria-label="Search students, courses, batches and trainers"><div id="globalSearchResults" class="global-search-results" hidden></div>
+        </div>
+        <div class="topbar-user" onclick="toggleUserMenu(event)">
+          <div class="avatar">{{ session.get('user_name','A')[0]|upper }}</div>
+          <div class="u-meta">
+            <strong class="notranslate" translate="no">{{ session.get('user_name','Admin') }}</strong>
+            <span>{{ {'admin':'Admin','trainer':'Trainer','student':'Student'}.get(session.get('user_role'),'User') }}</span>
+            </div>
+          <i class="fa-solid fa-chevron-down" style="font-size:11px;color:var(--gray-500)"></i>
+          <div class="user-dropdown" id="userDropdown">
+            <a href="{{ url_for('dashboard') }}"><i class="fa-solid fa-gauge"></i> Dashboard</a>
+            <a href="{{ url_for('logout') }}"><i class="fa-solid fa-right-from-bracket"></i> Logout</a>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main class="content">
+      <div class="flash-stack">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% for category, message in messages %}
+            <div class="flash-msg {{ 'error' if category=='error' else 'success' }} flash-toast-trigger"
+                 data-toast="1" data-type="{{ category }}" data-message="{{ message }}" style="display:none;"></div>
+          {% endfor %}
+        {% endwith %}
+      </div>
+
+      {% block content %}{% endblock %}
+    </main>
+
+    <footer class="page-footer"><span class="notranslate" translate="no">{{ institution_name }}</span> LMS</footer>
+  </div>
+</div>
+
+<!-- TOAST STACK -->
+<div class="toast-stack" id="toastStack"></div>
+
+<!-- SHARED DELETE CONFIRM MODAL -->
+<div class="modal-overlay" id="deleteModal">
+  <div class="modal-box confirm-box">
+    <div class="modal-body">
+      <div class="confirm-icon"><i class="fa-solid fa-triangle-exclamation"></i></div>
+      <h3 style="margin:0 0 8px;color:var(--navy-900);">Delete this record?</h3>
+      <p style="color:var(--gray-500);font-size:13.5px;">
+        Are you sure you want to delete <strong id="deleteItemLabel">this item</strong>? This action cannot be undone.
+      </p>
+    </div>
+    <div class="modal-footer" style="justify-content:center;">
+      <button class="btn btn-outline" onclick="closeModal('deleteModal')">Cancel</button>
+      <button class="btn btn-danger" id="confirmDeleteBtn" onclick="executeDelete()"><i class="fa-solid fa-trash"></i> Delete</button>
+    </div>
+  </div>
+</div>
+
+<script>
+function goBackSafely(){
+  try { if (document.referrer && new URL(document.referrer).origin === location.origin && history.length > 1) { history.back(); return; } } catch(e) {}
+  location.href = {{ url_for('dashboard')|tojson }};
+}
+// When an external Jitsi tab is opened from this LMS page, return this tab to the session list after it closes.
+function openMeetingAndReturn(url){
+  const meeting = window.open(url, '_blank', 'noopener=false');
+  if(!meeting){ location.href=url; return; }
+  const check = window.setInterval(function(){ try { if(meeting.closed){ window.clearInterval(check); location.href={{ url_for('sessions_page')|tojson }}; } } catch(e){} }, 700);
+}
+</script>
+<script>
+(function(){
+  const toggle = document.getElementById('reminderToggle');
+  const stack = document.getElementById('toastStack');
+  const seenKey = 'edubridge-reminders-seen-' + new Date().toISOString().slice(0,10);
+  let seen = new Set();
+  try { seen = new Set(JSON.parse(localStorage.getItem(seenKey) || '[]')); } catch(e) {}
+  function showReminder(item){
+    if (seen.has(item.id)) return;
+    seen.add(item.id);
+    try { localStorage.setItem(seenKey, JSON.stringify(Array.from(seen))); } catch(e) {}
+    if ('Notification' in window && Notification.permission === 'granted') {
+      try { const n = new Notification(item.title, {body:item.message, icon:'/static/img/logo.png', tag:item.id}); n.onclick = function(){ window.focus(); if(item.type==='class') location.href={{ url_for('sessions_page')|tojson }}; else location.href={{ url_for('my_learning')|tojson }}; n.close(); }; } catch(e) {}
+    }
+    if(stack){
+      const toast=document.createElement('div'); toast.className='toast'; toast.setAttribute('role','status');
+      toast.style.cssText='padding:12px 16px;margin:8px 0;border-radius:10px;background:var(--surface,#fff);color:var(--text,#172033);border:1px solid var(--border,#dbe3ef);box-shadow:0 6px 20px #0002;max-width:360px;';
+      const title=document.createElement('strong'); title.textContent=item.title;
+      const body=document.createElement('div'); body.textContent=item.message; body.style.marginTop='4px'; body.style.fontSize='13px';
+      toast.append(title,body); stack.appendChild(toast); window.setTimeout(()=>toast.remove(),9000);
+    }
+  }
+  async function checkReminders(){
+    try { const response=await fetch({{ url_for('reminder_feed')|tojson }},{headers:{'Accept':'application/json'},cache:'no-store'}); if(!response.ok) return; const data=await response.json(); (data.reminders||[]).forEach(showReminder); }
+    catch(e) { /* Reminder polling should never interrupt normal LMS navigation. */ }
+  }
+  if(toggle){
+    if('Notification' in window && Notification.permission==='granted') toggle.innerHTML='<i class="fa-solid fa-bell"></i>';
+    toggle.addEventListener('click', async function(){
+      if(!('Notification' in window)){ alert('Browser notifications are not supported here. In-app reminders will still appear while the LMS is open.'); return; }
+      try { const permission=await Notification.requestPermission(); if(permission==='granted'){toggle.innerHTML='<i class="fa-solid fa-bell"></i>'; toggle.title='Reminder notifications enabled'; checkReminders();} else {alert('Notifications are blocked. You can enable them in your browser site settings.');} }
+      catch(e){ alert('Could not enable browser notifications. In-app reminders will still appear while the LMS is open.'); }
+    });
+  }
+  checkReminders(); window.setInterval(checkReminders,60000);
+})();
+</script>
+<script src="{{ url_for('static', filename='js/script.js') }}"></script>
+<script>
+(function(){const input=document.getElementById('globalQuickSearch'),box=document.getElementById('globalSearchResults');if(!input||!box)return;let timer=null;input.addEventListener('input',()=>{clearTimeout(timer);const q=input.value.trim();if(q.length<2){box.hidden=true;box.innerHTML='';return;}timer=setTimeout(async()=>{try{const r=await fetch('/api/global-search?q='+encodeURIComponent(q),{headers:{'Accept':'application/json'}});if(!r.ok)throw new Error('Search unavailable');const items=await r.json();box.innerHTML='';if(!items.length){const empty=document.createElement('div');empty.className='global-search-empty';empty.textContent='No matching records found';box.appendChild(empty);}else items.forEach(item=>{const a=document.createElement('a');a.href=item.url;a.className='global-search-result';const label=document.createElement('span');label.textContent=item.label;const type=document.createElement('small');type.textContent=item.type;a.append(label,type);box.appendChild(a);});box.hidden=false;}catch(e){box.innerHTML='';const msg=document.createElement('div');msg.className='global-search-empty';msg.textContent='Search is temporarily unavailable';box.appendChild(msg);box.hidden=false;}},180);});document.addEventListener('click',e=>{if(!e.target.closest('.topbar-search'))box.hidden=true;});input.addEventListener('focus',()=>{if(box.childElementCount)box.hidden=false;});})();
+</script><style>.topbar-search{position:relative}.global-search-results{position:absolute;top:calc(100% + 8px);right:0;width:min(360px,85vw);max-height:340px;overflow:auto;background:var(--surface,#fff);border:1px solid var(--border,#dbe3ef);border-radius:12px;box-shadow:0 12px 30px rgba(15,23,42,.18);z-index:9999}.global-search-result{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 13px;text-decoration:none;color:var(--text-primary,#172033);border-bottom:1px solid var(--border,#e5e7eb)}.global-search-result:hover{background:var(--blue-50,#eff6ff)}.global-search-result small{color:var(--text-muted,#64748b);text-transform:capitalize}.global-search-empty{padding:13px;color:var(--text-muted,#64748b);font-size:13px}</style><style>.notranslate,[translate="no"]{ -webkit-user-select:text; }</style><meta name="google" content="notranslate"><div id="google_translate_element" style="display:none"></div><script>function googleTranslateElementInit(){new google.translate.TranslateElement({pageLanguage:'en',autoDisplay:false,multilanguagePage:true},'google_translate_element');}</script><script src="https://translate.google.com/translate_a/element.js?cb=googleTranslateElementInit"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

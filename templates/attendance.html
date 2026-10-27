@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Attendance{% endblock %}{% block page_title %}Attendance{% endblock %}{% block page_crumb %}Automatically tracked attendance by course and batch{% endblock %}
+{% block content %}
+{% if student_view %}<section class="attendance-hero student-attendance-summary"><div><span class="eyebrow">MY LEARNING</span><h2>My Attendance</h2><p>Your live class attendance summary.</p></div><div class="attendance-stat"><strong>{{ student_attendance_pct|default(0) }}%</strong><span>Attendance</span></div><div class="attendance-stat"><strong>{{ student_attended|default(0) }}</strong><span>Classes attended</span></div><div class="attendance-stat"><strong>{{ student_absent|default(0) }}</strong><span>Classes absent</span></div><div class="attendance-stat"><strong>{{ student_total_classes|default(0) }}</strong><span>Total classes</span></div></section>{% else %}<section class="attendance-hero"><div><span class="eyebrow">LEARNING ANALYTICS</span><h2>Attendance overview</h2><p>Attendance is recorded automatically from live-session participation. Manual marking and editing are disabled.</p></div><div class="attendance-stat"><strong>{{ attendance|length }}</strong><span>Records in view</span></div></section>{% endif %}
+{% if not student_view %}<div class="card attendance-filter-card"><div class="card-header"><h3><i class="fa-solid fa-filter"></i> Filter attendance</h3></div><div class="card-body"><div class="form-grid attendance-filter-grid"><div class="form-group"><label for="attendanceCourse">Select course</label><select id="attendanceCourse" class="form-control"><option value="">Choose a course</option>{% for c in courses %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}</select></div><div class="form-group"><label for="attendanceBatch">Select batch</label><select id="attendanceBatch" class="form-control"><option value="">Choose a batch</option>{% for b in batches %}<option value="{{ b.id }}" data-course="{{ b.course_id }}">{{ b.name }}</option>{% endfor %}</select></div><div class="form-group attendance-filter-action"><label class="attendance-filter-label">&nbsp;</label><button type="button" class="btn btn-primary attendance-filter-button" onclick="filterAttendance()" title="Apply filters" aria-label="Apply course and batch filters"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i></button></div></div></div></div>{% endif %}
+<div class="card"><div class="card-header"><h3><i class="fa-solid fa-table-list"></i> Attendance records</h3><span class="badge badge-blue" id="attendanceCount">{{ attendance|length }}</span></div><div class="table-wrap"><table class="data-table" id="attendanceTable"><thead><tr>{% if not student_view %}<th>Student</th>{% endif %}<th>Course</th><th>Batch</th><th>Date</th><th>Attendance</th></tr></thead><tbody>
+{% for a in attendance %}<tr data-att-row data-batch="{{ a.batch_id }}" data-course="{{ a._course_id }}"><td class="student-col" {% if student_view %}style="display:none"{% endif %}>{{ student_name(a.student_id) }}</td><td>{{ a._course_name }}</td><td>{{ a._batch_name }}</td><td>{{ a.date }}</td><td>{% if student_view %}<span class="badge {{ 'badge-green' if a.status in ['Present','Late'] else 'badge-red' if a.status == 'Absent' else 'badge-gray' }}">{{ a.status or 'Recorded' }}</span>{% else %}{% set pct=attendance_percentage(a.student_id) %}<div class="progress-wrap"><div class="progress-track"><div class="progress-fill" style="width:{{ pct }}%"></div></div><span>{{ pct }}%</span></div><small class="cell-muted">75% attendance threshold</small>{% endif %}</td></tr>
+{% else %}<tr><td colspan="5" class="empty-state">No attendance records available yet. Join scheduled live sessions to create automatic attendance records.</td></tr>{% endfor %}</tbody></table></div><div id="attendanceEmpty" class="empty-state" hidden>No records match the selected course and batch.</div></div>
+{% endblock %}
+{% block scripts %}{% if not student_view %}<style>
+.attendance-filter-grid{grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;align-items:end;gap:14px}
+.attendance-filter-action{margin-bottom:0;display:flex;flex-direction:column;justify-content:flex-end}
+.attendance-filter-label{visibility:hidden}
+.attendance-filter-button{width:44px;height:42px;padding:0;font-size:16px}
+@media(max-width:600px){.attendance-filter-grid{grid-template-columns:1fr 1fr auto;gap:8px}.attendance-filter-button{width:42px}}
+@media(max-width:420px){.attendance-filter-grid{grid-template-columns:1fr}.attendance-filter-action{align-items:flex-start}.attendance-filter-label{display:none}}
+</style><script>
+const attendanceCourseSelect=document.getElementById('attendanceCourse');
+const attendanceBatchSelect=document.getElementById('attendanceBatch');
+// Keep the original options so the batch dropdown can be rebuilt whenever the course changes.
+const allAttendanceBatchOptions=Array.from(attendanceBatchSelect.options).slice(1).map(option=>({
+  value:option.value, text:option.textContent, course:String(option.dataset.course||'')
+}));
+function updateAttendanceBatches(resetSelection=true){
+  const course=String(attendanceCourseSelect.value||'');
+  const previous=String(attendanceBatchSelect.value||'');
+  attendanceBatchSelect.replaceChildren(new Option('Choose a batch',''));
+  allAttendanceBatchOptions.filter(batch=>!course||batch.course===course).forEach(batch=>{
+    attendanceBatchSelect.add(new Option(batch.text,batch.value));
+    attendanceBatchSelect.options[attendanceBatchSelect.options.length-1].dataset.course=batch.course;
+  });
+  if(!resetSelection && previous && Array.from(attendanceBatchSelect.options).some(option=>option.value===previous)){
+    attendanceBatchSelect.value=previous;
+  } else {
+    attendanceBatchSelect.value='';
+  }
+}
+attendanceCourseSelect.addEventListener('change',()=>{
+  updateAttendanceBatches(true);
+  // Clear stale results until the common search button is clicked again.
+});
+function filterAttendance(){
+  const course=String(attendanceCourseSelect.value||'');
+  const chosenBatch=String(attendanceBatchSelect.value||'');
+  let count=0;
+  document.querySelectorAll('[data-att-row]').forEach(row=>{
+    const courseMatch=!course||String(row.dataset.course||'')===course;
+    const batchMatch=!chosenBatch||String(row.dataset.batch||'')===chosenBatch;
+    const show=courseMatch&&batchMatch;
+    row.hidden=!show;
+    if(show)count++;
+  });
+  document.getElementById('attendanceCount').textContent=count;
+  document.getElementById('attendanceEmpty').hidden=count!==0;
+}
+// Initialize so a selected course (if restored by the browser) limits the batch list.
+updateAttendanceBatches(false);
+</script>{% endif %}{% endblock %}

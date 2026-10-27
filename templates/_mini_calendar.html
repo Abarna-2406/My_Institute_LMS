@@ -1,0 +1,62 @@
+{# Small month calendar. Needs `cal_events` = [{date:'YYYY-MM-DD', title, time, type:'session'|'exam'}] #}
+<div class="hm-card mc-card" id="miniCal">
+  <div class="hm-head">
+    <h3><i class="fa-regular fa-calendar" style="color:var(--hm-primary);margin-right:6px"></i> Calendar</h3>
+    <div class="mc-nav">
+      <button type="button" id="mcPrev" aria-label="Previous month"><i class="fa-solid fa-chevron-left"></i></button>
+      <strong id="mcTitle"></strong>
+      <button type="button" id="mcNext" aria-label="Next month"><i class="fa-solid fa-chevron-right"></i></button>
+    </div>
+  </div>
+  <div class="mc-week"><span>Su</span><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span></div>
+  <div class="mc-grid" id="mcGrid"></div>
+  <div class="mc-legend"><span><i style="background:#7c4dff"></i> Live class</span><span><i style="background:#ff9f43"></i> Assessment</span></div>
+  <div class="mc-list" id="mcList"></div>
+</div>
+<script>
+(function(){
+  var events={{ cal_events|default([])|tojson }};
+  var byDate={}; events.forEach(function(e){(byDate[e.date]=byDate[e.date]||[]).push(e);});
+  var now=new Date(), view=new Date(now.getFullYear(),now.getMonth(),1), selected=null;
+  var months=['January','February','March','April','May','June','July','August','September','October','November','December'];
+  function pad(n){return n<10?'0'+n:''+n;}
+  function key(y,m,d){return y+'-'+pad(m+1)+'-'+pad(d);}
+  function esc(t){return String(t==null?'':t).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+  function render(){
+    var y=view.getFullYear(), m=view.getMonth();
+    document.getElementById('mcTitle').textContent=months[m]+' '+y;
+    var first=new Date(y,m,1).getDay(), days=new Date(y,m+1,0).getDate(), html='';
+    for(var i=0;i<first;i++) html+='<span class="mc-day empty"></span>';
+    for(var d=1;d<=days;d++){
+      var k=key(y,m,d), ev=byDate[k]||[], cls='mc-day';
+      if(k===key(now.getFullYear(),now.getMonth(),now.getDate())) cls+=' today';
+      if(k===selected) cls+=' sel';
+      var dots='';
+      if(ev.some(function(e){return e.type==='session';})) dots+='<i style="background:#7c4dff"></i>';
+      if(ev.some(function(e){return e.type==='exam';})) dots+='<i style="background:#ff9f43"></i>';
+      html+='<button type="button" class="'+cls+'" data-k="'+k+'"><b>'+d+'</b><em>'+dots+'</em></button>';
+    }
+    document.getElementById('mcGrid').innerHTML=html;
+    showList();
+  }
+  function showList(){
+    var box=document.getElementById('mcList'), list;
+    if(selected){ list=byDate[selected]||[]; }
+    else {
+      var y=view.getFullYear(), m=view.getMonth(), prefix=y+'-'+pad(m+1)+'-';
+      list=events.filter(function(e){return e.date.indexOf(prefix)===0;}).sort(function(a,b){return a.date<b.date?-1:1;}).slice(0,4);
+    }
+    if(!list.length){ box.innerHTML='<div class="mc-empty">'+(selected?'Nothing scheduled on this day.':'No events this month.')+'</div>'; return; }
+    box.innerHTML=list.map(function(e){
+      return '<div class="mc-item '+e.type+'"><span class="mc-d">'+e.date.slice(8)+'</span><div><strong>'+esc(e.title)+'</strong><small>'+(e.type==='exam'?'Assessment deadline':'Live class')+(e.time?' · '+esc(e.time):'')+'</small></div></div>';
+    }).join('');
+  }
+  document.getElementById('mcPrev').onclick=function(){view=new Date(view.getFullYear(),view.getMonth()-1,1);selected=null;render();};
+  document.getElementById('mcNext').onclick=function(){view=new Date(view.getFullYear(),view.getMonth()+1,1);selected=null;render();};
+  document.getElementById('mcGrid').addEventListener('click',function(ev){
+    var b=ev.target.closest('.mc-day[data-k]'); if(!b) return;
+    selected=(selected===b.dataset.k)?null:b.dataset.k; render();
+  });
+  render();
+})();
+</script>
