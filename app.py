@@ -1510,6 +1510,26 @@ def institution_filter(items):
     iid = current_institution_id()
     return [x for x in items if _id_equal(x.get("institution_id", 1), iid)]
 
+
+def _course_is_enrollable(course):
+    """Treat blank/legacy status values as active while respecting explicit inactive states."""
+    status = str((course or {}).get("status") or "Active").strip().lower()
+    return status in {"active", "available", "published", "open", "ongoing"}
+
+def _find_enrollment_course(course_id, institution_id=None):
+    iid = current_institution_id() if institution_id is None else institution_id
+    return next((c for c in COURSES
+                 if _payment_int(c.get("id"), -1) == int(course_id)
+                 and _payment_int(c.get("institution_id", 1), 1) == int(iid)
+                 and _course_is_enrollable(c)), None)
+
+def _find_enrollment_batch(batch_id, course_id, institution_id=None):
+    iid = current_institution_id() if institution_id is None else institution_id
+    return next((b for b in BATCHES
+                 if _payment_int(b.get("id"), -1) == int(batch_id)
+                 and _payment_int(b.get("institution_id", 1), 1) == int(iid)
+                 and _payment_int(b.get("course_id"), -1) == int(course_id)), None)
+
 def ensure_institution_fields():
     iid=current_institution_id()
     for entity in ("courses","trainers","batches","students","guardians","attendance","sessions","assessments","announcements","payments","salaries","materials","recordings","forum_posts","learning_progress","certificates","assessment_submissions","course_lessons"):
@@ -3285,11 +3305,10 @@ def demo_payment_enroll():
         return jsonify({"error": "Invalid course or batch."}), 400
 
     iid = current_institution_id()
-    course = next((c for c in institution_filter(COURSES) if c.get("id") == course_id), None)
-    batch = next((b for b in institution_filter(BATCHES)
-                  if b.get("id") == batch_id and b.get("course_id") == course_id), None)
+    course = _find_enrollment_course(course_id, iid)
+    batch = _find_enrollment_batch(batch_id, course_id, iid)
     if not course or not batch:
-        return jsonify({"error": "The selected course or batch is not available."}), 400
+        return jsonify({"error": "This course or batch is no longer available for enrollment. Refresh the page and choose a batch listed under the selected course."}), 400
     if any(_payment_int(cid) == course_id for cid in student_course_ids(student)):
         return jsonify({"error": "You are already enrolled in this course."}), 400
 
@@ -3385,12 +3404,10 @@ def free_course_enroll():
         return jsonify({"error": "Course and batch are required."}), 400
 
     iid = current_institution_id()
-    course = next((c for c in institution_filter(COURSES)
-                   if int(c.get("id")) == course_id and c.get("status") == "Active"), None)
-    batch = next((b for b in institution_filter(BATCHES)
-                  if int(b.get("id")) == batch_id and int(b.get("course_id")) == course_id), None)
+    course = _find_enrollment_course(course_id, iid)
+    batch = _find_enrollment_batch(batch_id, course_id, iid)
     if not course or not batch:
-        return jsonify({"error": "The selected course or batch is not available."}), 400
+        return jsonify({"error": "This course or batch is no longer available for enrollment. Refresh the page and choose a batch listed under the selected course."}), 400
 
     try:
         fee = float(course.get("fee") or 0)
@@ -3494,21 +3511,11 @@ def razorpay_create_order():
         return jsonify({"error": "Course and batch are required."}), 400
 
     iid = current_institution_id()
-    course = next((
-        c for c in COURSES
-        if _payment_int(c.get("id")) == course_id
-        and _payment_int(c.get("institution_id", 1), 1) == iid
-        and c.get("status") == "Active"
-    ), None)
-    batch = next((
-        b for b in BATCHES
-        if _payment_int(b.get("id")) == batch_id
-        and _payment_int(b.get("institution_id", 1), 1) == iid
-        and _payment_int(b.get("course_id")) == course_id
-    ), None)
+    course = _find_enrollment_course(course_id, iid)
+    batch = _find_enrollment_batch(batch_id, course_id, iid)
 
     if not course or not batch:
-        return jsonify({"error": "Select a valid active course and batch."}), 400
+        return jsonify({"error": "This course or batch is no longer available for enrollment. Refresh the page and choose a batch listed under the selected course."}), 400
 
     capacity = int(batch.get("capacity") or 0)
     enrolled = int(batch.get("enrolled") or 0)
