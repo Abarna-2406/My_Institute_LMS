@@ -2033,7 +2033,7 @@ def dashboard():
     if role == "student":
         recommended_courses = [
             c for c in institution_filter(COURSES)
-            if c.get("status") == "Active" and c.get("id") not in enrolled_ids
+            if str(c.get("status") or "Active").strip().lower() == "active" and str(c.get("id") or "") not in {str(x) for x in enrolled_ids}
         ]
     recent_announcements = sorted(institution_filter(ANNOUNCEMENTS) if role=="admin" else (trainer_scope()["announcements"] if role=="trainer" else [a for a in institution_filter(ANNOUNCEMENTS) if a.get("audience") in {"All","Students"}]), key=lambda a:a["date"], reverse=True)[:4]
     upcoming_sessions=[x for x in scoped["sessions"] if x.get("status", "Scheduled")=="Scheduled"][:5]
@@ -2129,7 +2129,7 @@ def courses_page():
         available_courses = []
         for item in all_courses:
             cid = _safe_id(item.get("id"))
-            if cid is not None and item.get("status") == "Active" and cid not in enrolled_ids:
+            if cid is not None and str(item.get("status") or "Active").strip().lower() == "active" and cid not in enrolled_ids:
                 normalized_course = dict(item)
                 normalized_course["id"] = cid
                 available_courses.append(normalized_course)
