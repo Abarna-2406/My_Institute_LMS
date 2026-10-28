@@ -211,6 +211,6 @@ function serializeQuizBuilder(){
 function openAddAssessmentModal(){assessmentEditId=null;document.getElementById('assessmentModalTitle').innerText='Create assessment';document.getElementById('assessmentForm').reset();loadQuizBuilder([]);addQuizQuestion();openModal('assessmentModal');}
 function openEditAssessmentModal(a){assessmentEditId=a.id;document.getElementById('assessmentModalTitle').innerText='Edit assessment';document.getElementById('assessmentForm').reset();prefillForm('assessmentForm',a);const deadline=document.querySelector('#assessmentForm [name="deadline"]');if(deadline)deadline.value=a.deadline||a.date||'';loadQuizBuilder(a.questions||[]);openModal('assessmentModal');}
 document.getElementById('assessmentForm').addEventListener('submit',function(e){e.preventDefault();const serialized=serializeQuizBuilder();if(serialized===null)return;document.getElementById('questionsText').value=serialized;submitEntityForm('assessments',assessmentEditId?'PUT':'POST',this,assessmentEditId);});
-if(new URLSearchParams(location.search).get('open')==='add'){setTimeout(openAddAssessmentModal,150);}
+if(new URLSearchParams(location.search).get('open')==='add'){const cleanUrl=new URL(window.location.href);cleanUrl.searchParams.delete('open');window.history.replaceState({},document.title,cleanUrl.pathname+cleanUrl.search+cleanUrl.hash);setTimeout(openAddAssessmentModal,150);}
 </script>{% endif %}
 {% endblock %}

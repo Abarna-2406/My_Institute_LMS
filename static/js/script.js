@@ -156,6 +156,8 @@ function submitEntityForm(entity, method, formEl, itemId, onSuccess){
         successMessage += ' | Login username: ' + (result.data.item.portal_username || result.data.item.email || '') + ' | Default password: ' + result.data.item.temporary_password;
       }
       showToast(successMessage, 'success');
+      var activeModal = formEl.closest('.modal-overlay');
+      if(activeModal) closeModal(activeModal.id);
       if(onSuccess) onSuccess(result.data);
       setTimeout(function(){ window.location.reload(); }, result.data.item && result.data.item.temporary_password ? 3500 : 600);
     } else {

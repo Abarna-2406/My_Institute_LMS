@@ -2,11 +2,11 @@
 {% block title %}Course Content{% endblock %}
 {% block body_class %}home-page{% endblock %}
 {% block page_title %}{{ 'Course Content' if role == 'admin' else 'My Course Content' }}{% endblock %}
-{% block page_crumb %}{% if role == 'admin' %}Build week-wise lessons for every course{% else %}Content coverage and learner progress for your courses{% endif %}{% endblock %}
+{% block page_crumb %}{% if role == 'admin' %}Build week-wise lessons for every course{% else %}Manage content and learner progress for your assigned courses{% endif %}{% endblock %}
 {% block content %}
 {% set ay = analytics %}
 <div class="hm-welcome"><h1>{{ 'Course Content' if role == 'admin' else 'My Course Content' }}</h1>
-<p>{% if role == 'admin' %}Only the admin adds content. Trainers and students can view and learn from it, week by week.{% else %}View-only. Content is added by the institute admin - here is how it is being used.{% endif %}</p></div>
+<p>{% if role == 'admin' %}Only the admin adds content. Trainers and students can view and learn from it, week by week.{% else %}Add and edit lessons for the courses assigned to you, and track learner progress.{% endif %}</p></div>
 
 <div class="hm-stats auto">
   <div class="hm-stat s1"><div><small>Courses</small><strong>{{ courses|length }}</strong><em>{{ ay.total_lessons }} lessons in total</em></div><span class="hm-ic"><i class="fa-solid fa-book-open"></i></span></div>
@@ -50,7 +50,7 @@
   </div>
 </div>
 
-{% if role == 'admin' %}
+{% if role in ['admin', 'trainer'] %}
 <div class="hm-card" style="margin-top:16px" id="addContent">
   <div class="hm-head"><h3><i class="fa-solid fa-plus" style="color:var(--hm-primary)"></i> Add content to a week</h3></div>
 <form method="post" action="{{ url_for('create_course_lesson') }}" enctype="multipart/form-data" class="form-grid">
@@ -70,15 +70,15 @@
 
 <div class="hm-card" style="margin-top:16px">
   <div class="hm-head"><h3>Course curriculum <span class="hm-tag g">{{ lessons|length }}</span></h3></div>
-  <div class="table-wrap"><table class="hm-table"><thead><tr><th>Course</th><th>Week</th><th>Topic</th><th>Type</th><th>Content</th>{% if role == 'admin' %}<th>Actions</th>{% endif %}</tr></thead><tbody>
+  <div class="table-wrap"><table class="hm-table"><thead><tr><th>Course</th><th>Week</th><th>Topic</th><th>Type</th><th>Content</th>{% if role in ['admin', 'trainer'] %}<th>Actions</th>{% endif %}</tr></thead><tbody>
   {% for l in lessons %}<tr>
     <td>{{ course_name(l.course_id) }}</td>
     <td><b>Week {{ l.module_position or 1 }}</b>{% if l.module_name and ':' in l.module_name %}<div class="muted">{{ l.module_name.split(':',1)[1].strip() }}</div>{% endif %}</td>
     <td><strong>{{ l.title }}</strong><div class="muted">{{ l.description }}</div></td>
     <td>{{ l.kind }}</td>
     <td>{% if l.kind == 'Video' %}<a href="{{ l.video_url }}" target="_blank" rel="noopener">Preview video</a>{% elif l.kind == 'Document' %}<a href="{{ url_for('course_material', lesson_id=l.id) }}" target="_blank" rel="noopener">Preview {{ l.document_original_name or 'file' }}</a>{% else %}{{ assessment_title(l.assessment_id) }}{% endif %}</td>
-    {% if role == 'admin' %}<td style="white-space:nowrap"><a class="btn btn-sm btn-primary" href="{{ url_for('edit_course_lesson', lesson_id=l.id) }}"><i class="fa-solid fa-pen-to-square"></i> Edit</a> <form method="post" action="{{ url_for('delete_course_lesson', lesson_id=l.id) }}" style="display:inline" onsubmit="return confirm('Delete this course content item? This removes it from the curriculum.');"><button class="btn btn-sm btn-danger" type="submit"><i class="fa-solid fa-trash"></i> Delete</button></form></td>{% endif %}
-  </tr>{% else %}<tr><td colspan="{{ 6 if role == 'admin' else 5 }}" class="hm-empty">No curriculum items yet.{% if role == 'admin' %} Add a video, document or quiz above.{% endif %}</td></tr>{% endfor %}
+    {% if role in ['admin', 'trainer'] %}<td style="white-space:nowrap"><a class="btn btn-sm btn-primary" href="{{ url_for('edit_course_lesson', lesson_id=l.id) }}"><i class="fa-solid fa-pen-to-square"></i> Edit</a> <form method="post" action="{{ url_for('delete_course_lesson', lesson_id=l.id) }}" style="display:inline" onsubmit="return confirm('Delete this course content item? This removes it from the curriculum.');"><button class="btn btn-sm btn-danger" type="submit"><i class="fa-solid fa-trash"></i> Delete</button></form></td>{% endif %}
+  </tr>{% else %}<tr><td colspan="{{ 6 if role in ['admin', 'trainer'] else 5 }}" class="hm-empty">No curriculum items yet.{% if role in ['admin', 'trainer'] %} Add a video, document or quiz above.{% endif %}</td></tr>{% endfor %}
   </tbody></table></div>
 </div>
 {% endblock %}

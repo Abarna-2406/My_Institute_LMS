@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Payments{% endblock %}
 {% block page_title %}Payments{% endblock %}
-{% block page_crumb %}Track completed and failed student payments{% endblock %}
+{% block page_crumb %}Track successful student payments{% endblock %}
 
 {% block content %}
 
@@ -9,13 +9,8 @@
   <div class="stat-card">
     <div class="stat-top"><div class="stat-icon" style="background:var(--green-600);"><i class="fa-solid fa-circle-check"></i></div></div>
     <div class="stat-value">₹{{ '{:,}'.format(total_paid) }}</div>
-    <div class="stat-label">Total Paid</div>
+    <div class="stat-label">Total Payment</div>
   </div>
-  {% if not student_view %}<div class="stat-card">
-    <div class="stat-top"><div class="stat-icon" style="background:var(--red-600);"><i class="fa-solid fa-circle-xmark"></i></div></div>
-    <div class="stat-value">₹{{ '{:,}'.format(total_failed) }}</div>
-    <div class="stat-label">Total Failed Payment</div>
-  </div>{% endif %}
 </div>
 
 <div class="card">
@@ -29,41 +24,23 @@
       <i class="fa-solid fa-magnifying-glass" style="color:var(--gray-500)"></i>
       <input type="text" placeholder="Search by invoice or student..." data-search-for="paymentsTable" oninput="applyFilters('paymentsTable')">
     </div>
-    <select class="filter-select" data-filter-for="paymentsTable" data-field="method" onchange="applyFilters('paymentsTable')">
-      <option value="">All Methods</option>
-      <option value="UPI">UPI</option>
-      <option value="Card">Card</option>
-      <option value="Cash">Cash</option>
-      <option value="Bank Transfer">Bank Transfer</option>
-      <option value="Cheque">Cheque</option>
-      <option value="Other">Other</option>
-      <option value="Razorpay">Razorpay</option>
-    </select>
-    <select class="filter-select" data-filter-for="paymentsTable" data-field="status" onchange="applyFilters('paymentsTable')">
-      <option value="">All Status</option>
-      <option value="Paid">Paid</option>
-            {% if not student_view %}<option value="Failed">Failed</option>{% endif %}
-    </select>
   </div>
 
   <div class="table-wrap">
     <table class="data-table" id="paymentsTable">
       <thead>
-        <tr><th>Invoice</th><th>Student</th><th>Amount</th><th>Date</th><th>Method</th><th>Status</th><th>Actions</th></tr>
+        <tr><th>Invoice</th><th>Student</th><th>Amount</th><th>Date</th></tr>
       </thead>
       <tbody>
         {% for p in payments %}
-        <tr data-row data-id="{{ p.id }}" data-entity="payments" data-method="{{ p.method }}" data-status="{{ p.status }}">
+        <tr data-row data-id="{{ p.id }}" data-entity="payments">
           <td class="cell-strong">{{ p.invoice_no }}</td>
           <td>{{ student_name(p.student_id) }}</td>
           <td>₹{{ '{:,}'.format(p.amount) }}{% if p.razorpay_payment_id %}<div class="cell-muted" style="font-size:11px;">{{ p.razorpay_payment_id }}</div>{% endif %}</td>
           <td>{{ p.date }}</td>
-          <td>{{ p.method }}</td>
-          <td><span class="badge {{ 'badge-green' if p.status|lower=='paid' else 'badge-red' }}">{{ p.status }}</span></td>
-          <td><span class="cell-muted">{{ 'Personal payment' if student_view else ('Manually recorded' if p.source == 'Manual' else 'Gateway synced') }}</span></td>
         </tr>
         {% endfor %}
-        <tr class="empty-row" style="display:none;"><td colspan="7">No payments match your search.</td></tr>
+        <tr class="empty-row" style="display:none;"><td colspan="4">No payments match your search.</td></tr>
       </tbody>
     </table>
   </div>

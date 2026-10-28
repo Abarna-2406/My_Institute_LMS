@@ -121,6 +121,6 @@ document.getElementById('trainerForm').addEventListener('submit', function(e){
   e.preventDefault();
   submitEntityForm('trainers', trainerEditId ? 'PUT' : 'POST', this, trainerEditId);
 });
-if(new URLSearchParams(location.search).get('open')==='add'){setTimeout(openAddTrainerModal,150);}
+if(new URLSearchParams(location.search).get('open')==='add'){const cleanUrl=new URL(window.location.href);cleanUrl.searchParams.delete('open');window.history.replaceState({},document.title,cleanUrl.pathname+cleanUrl.search+cleanUrl.hash);setTimeout(openAddTrainerModal,150);}
 </script>
 {% endblock %}

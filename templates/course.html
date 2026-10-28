@@ -164,6 +164,7 @@ function openAddCourseModal(){courseEditId=null;document.getElementById('courseM
 function openEditCourseModal(c){courseEditId=c.id;document.getElementById('courseModalTitle').innerText='Edit Course';document.getElementById('courseForm').reset();prefillForm('courseForm',Object.assign({},c,{duration:String(c.duration||'').match(/\d+/)?String(c.duration).match(/\d+/)[0]:''}));document.getElementById('courseCode').value=c.code||'';var b=({{ batches|tojson }}).find(function(x){return Number(x.course_id)===Number(c.id);});if(b){prefillForm('courseForm',{batch_name:b.name,batch_trainer_id:b.trainer_id,batch_start_date:b.start_date,batch_end_date:b.end_date,batch_capacity:b.capacity,batch_status:b.status});}openModal('courseModal');}
 function makeCourseCode(name){var words=(name||'').toUpperCase().match(/[A-Z0-9]+/g)||[];var prefix=words.slice(0,5).map(function(w){return w[0]}).join('')||'CRS';return prefix+'-001';}
 document.querySelector('#courseForm [name=name]').addEventListener('input',function(){if(!courseEditId)document.getElementById('courseCode').value=makeCourseCode(this.value);});
+(function(){var f=document.getElementById('courseForm');if(!f)return;var weeks=f.querySelector('[name=duration]'),start=f.querySelector('[name=batch_start_date]'),end=f.querySelector('[name=batch_end_date]');function calc(){if(!start||!end||!start.value)return;var n=Math.max(1,parseInt(weeks.value||'4',10)||4);var d=new Date(start.value+'T12:00:00');d.setDate(d.getDate()+n*7);end.value=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}if(end)end.readOnly=true;if(start)start.addEventListener('change',calc);if(weeks)weeks.addEventListener('input',calc);f.addEventListener('reset',function(){setTimeout(calc,0);});})();
 function clockLabel(v,ampm){if(!v)return '';var a=v.split(':');var h=Number(a[0])%12;if(h===0)h=12;return h+':'+a[1]+' '+ampm;}
 document.getElementById('courseForm').addEventListener('submit',function(e){e.preventDefault();var f=this;var d=f.querySelector('[name=duration]');d.value=String(parseInt(d.value,10))+' Weeks';submitEntityForm('courses',courseEditId?'PUT':'POST',f,courseEditId);});
 {% endif %}
@@ -485,6 +486,6 @@ if (requestedCourseId) {
   if(end) end.min=localToday;
 })();
 
-if(new URLSearchParams(location.search).get('open')==='add'){setTimeout(openAddCourseModal,150);}
+if(new URLSearchParams(location.search).get('open')==='add'){const cleanUrl=new URL(window.location.href);cleanUrl.searchParams.delete('open');window.history.replaceState({},document.title,cleanUrl.pathname+cleanUrl.search+cleanUrl.hash);setTimeout(openAddCourseModal,150);}
 </script>
 {% endblock %}

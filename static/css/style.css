@@ -2391,3 +2391,17 @@ html.dark-mode .gm-tag.g { background: #164e45 !important; color: #a7f3d0 !impor
   .student-dashboard-layout .hm-dash-calendar .calendar-grid { max-width: 100%; }
   .student-dashboard-layout .hm-dash-calendar * { overflow-wrap: anywhere; }
 }
+
+
+/* Dark mode badge state: colour only badges the learner has earned. */
+html.dark-mode .gm-badge.locked,
+html.dark-mode .gm-badge.locked span {
+  background: #202638 !important;
+  border-color: rgba(148,163,184,.12) !important;
+  box-shadow: none !important;
+  filter: grayscale(1) !important;
+}
+html.dark-mode .gm-badge.locked span i { color: #68738a !important; }
+html.dark-mode .gm-badge.locked strong { color: #8792a8 !important; }
+html.dark-mode .gm-badge.locked small { color: #68738a !important; }
+html.dark-mode .gm-badge.earned span { filter: none !important; }

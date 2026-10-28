@@ -25,7 +25,7 @@
         <a class="hm-btn" href="{{ url_for('course_content_page', course=course.id) }}"><i class="fa-solid fa-plus"></i> Add content</a>
         <a class="hm-btn dark" href="{{ url_for('courses_page') }}"><i class="fa-solid fa-pen"></i> Manage courses</a>
       {% elif role == 'trainer' %}
-        <a class="hm-btn" href="{{ url_for('course_content_page') }}"><i class="fa-solid fa-chart-pie"></i> Content analytics</a>
+        <a class="hm-btn" href="{{ url_for('course_content_page', course=course.id) }}#addContent"><i class="fa-solid fa-plus"></i> Add / edit content</a>
       {% elif role == 'student' and enrolled %}
         <a class="hm-btn" href="{{ url_for('my_learning') }}#course-{{ course.id }}"><i class="fa-solid fa-play"></i> {{ 'Continue learning' if progress and progress.done else 'Start learning' }}</a>
       {% elif role == 'student' %}
@@ -64,7 +64,7 @@
                 {% else %}
                   {% if l.kind != 'Assessment' and l.url %}<button type="button" class="hm-pill" onclick='openPreview({{ l.url|tojson }}, {{ l.kind|tojson }}, {{ l.title|tojson }})'><i class="fa-solid fa-eye"></i> Open</button>
                   {% elif l.kind == 'Assessment' %}<a class="hm-pill" href="{{ url_for('assessments_page') }}"><i class="fa-solid fa-eye"></i> View quiz</a>{% endif %}
-                  {% if role == 'admin' %}
+                  {% if role in ['admin', 'trainer'] %}
                     <a class="hm-pill" href="{{ url_for('edit_course_lesson', lesson_id=l.id) }}"><i class="fa-solid fa-pen"></i></a>
                     <form method="post" action="{{ url_for('delete_course_lesson', lesson_id=l.id) }}" onsubmit="return confirm('Remove this item from the course?')" style="display:inline"><button class="hm-pill danger" type="submit"><i class="fa-solid fa-trash"></i></button></form>
                   {% endif %}
@@ -72,7 +72,7 @@
               </div>
             </div>
             {% else %}
-            <div class="cd-empty">{% if role == 'admin' %}No content in this week yet. <a href="{{ url_for('course_content_page', course=course.id) }}">Add the first lesson</a>.{% else %}The admin has not added content for this week yet.{% endif %}</div>
+            <div class="cd-empty">{% if role in ['admin', 'trainer'] %}No content in this week yet. <a href="{{ url_for('course_content_page', course=course.id) }}#addContent">Add the first lesson</a>.{% else %}The admin has not added content for this week yet.{% endif %}</div>
             {% endfor %}
           </div>
         </details>

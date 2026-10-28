@@ -125,6 +125,6 @@ document.getElementById('announcementForm').addEventListener('submit', function(
   e.preventDefault();
   submitEntityForm('announcements', announcementEditId ? 'PUT' : 'POST', this, announcementEditId);
 });
-if(new URLSearchParams(location.search).get('open')==='add'){setTimeout(openAddAnnouncementModal,150);}
+if(new URLSearchParams(location.search).get('open')==='add'){const cleanUrl=new URL(window.location.href);cleanUrl.searchParams.delete('open');window.history.replaceState({},document.title,cleanUrl.pathname+cleanUrl.search+cleanUrl.hash);setTimeout(openAddAnnouncementModal,150);}
 </script>
 {% endblock %}

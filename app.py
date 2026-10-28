@@ -351,8 +351,16 @@ def student_course_ids(student):
         return []
     ids = list(student.get("course_ids") or [])
     ids += [e.get("course_id") for e in student_enrollments(student) if e.get("course_id") is not None]
-    if not ids and student.get("course_id"):
-        ids = [student.get("course_id")]
+    if student.get("course_id"):
+        ids.append(student.get("course_id"))
+    # Some admin-created student accounts store the batch assignment but omit
+    # course_id/enrollment rows. Derive the course from that assigned batch too.
+    assigned_batch_ids = {str(e.get("batch_id")) for e in student_enrollments(student) if e.get("batch_id") not in (None, "")}
+    if student.get("batch_id") not in (None, ""):
+        assigned_batch_ids.add(str(student.get("batch_id")))
+    for batch in institution_filter(BATCHES):
+        if str(batch.get("id")) in assigned_batch_ids and batch.get("course_id") not in (None, ""):
+            ids.append(batch.get("course_id"))
     clean = []
     seen = set()
     for value in ids:
@@ -378,8 +386,9 @@ def assessment_title(assessment_id):
     return item.get("title", "Assessment") if item else "Assessment not found"
 
 def trainer_name(tid):
-    t = find_by_id(TRAINERS, tid)
-    return t["name"] if t else "—"
+    # Legacy PostgreSQL JSON rows may store IDs as strings while newer rows use integers.
+    t = next((x for x in institution_filter(TRAINERS) if _id_equal(x.get("id"), tid)), None)
+    return (t.get("name") or t.get("full_name") or t.get("username")) if t else "—"
 
 
 def batch_name(bid):
@@ -2712,10 +2721,16 @@ def payments_page():
         payments = [p for p in institution_filter(PAYMENTS) if student and _id_equal(p.get("student_id"), student.get("id")) and str(p.get("status", "")).strip().lower() == "paid" and float(p.get("amount") or 0) > 0]
         total_paid = sum(float(p.get("amount") or 0) for p in payments)
         return render_template("payments.html", payments=payments, students=[student] if student else [], total_paid=total_paid, total_pending=0, total_failed=0, student_view=True, today_date=datetime.now().strftime("%Y-%m-%d"))
-    scoped_payments = institution_filter(PAYMENTS)
-    total_paid = sum(float(p.get("amount") or 0) for p in scoped_payments if str(p.get("status", "")).strip().lower() == "paid" and float(p.get("amount") or 0) > 0)
-    total_failed = sum(float(p.get("amount") or 0) for p in scoped_payments if str(p.get("status", "")).strip().lower() in {"failed", "failure"} and float(p.get("amount") or 0) > 0)
-    return render_template("payments.html", payments=scoped_payments, students=institution_filter(STUDENTS), total_paid=total_paid, total_pending=0, total_failed=total_failed, student_view=False, today_date=datetime.now().strftime("%Y-%m-%d"))
+    # Show only successful payments in the admin payment list. Failed gateway attempts
+    # remain in storage for audit/reconciliation, but are not shown as student payments.
+    scoped_payments = [
+        p for p in institution_filter(PAYMENTS)
+        if str(p.get("status", "")).strip().lower() == "paid"
+        and float(p.get("amount") or 0) > 0
+    ]
+    total_paid = sum(float(p.get("amount") or 0) for p in scoped_payments)
+    # Includes successful online transactions and manually recorded payments only.
+    return render_template("payments.html", payments=scoped_payments, students=institution_filter(STUDENTS), total_paid=total_paid, total_pending=0, student_view=False, today_date=datetime.now().strftime("%Y-%m-%d"))
 
 
 @app.route("/payments/record", methods=["POST"])
@@ -2953,9 +2968,13 @@ def api_collection(entity):
         today = datetime.now().date()
         try:
             start = datetime.strptime(str(payload.get("start_date", "")), "%Y-%m-%d").date()
-            end = datetime.strptime(str(payload.get("end_date", "")), "%Y-%m-%d").date()
-        except ValueError:
-            return jsonify({"error":"Enter valid batch start and end dates."}),400
+            course_duration = re.search(r"\d+", str(course.get("duration", "4 Weeks")))
+            duration_weeks = max(1, int(course_duration.group())) if course_duration else 4
+            # End date is authoritative: selected course duration determines it.
+            end = start + timedelta(days=duration_weeks * 7)
+            payload["end_date"] = end.strftime("%Y-%m-%d")
+        except (ValueError, TypeError):
+            return jsonify({"error":"Enter a valid batch start date and course duration."}),400
         if end < today:
             return jsonify({"error":"This batch has already ended. Choose an end date today or later."}),400
         if start < today:
@@ -2996,9 +3015,12 @@ def api_collection(entity):
             return jsonify({"error":"This batch name already exists. Please use a unique batch name."}),409
         try:
             _start = datetime.strptime(embedded_batch["start_date"], "%Y-%m-%d").date()
-            _end = datetime.strptime(embedded_batch["end_date"], "%Y-%m-%d").date()
-        except ValueError:
-            return jsonify({"error":"Enter valid batch start and end dates."}),400
+            _course_weeks_match = re.search(r"\d+", str(payload.get("duration", "4 Weeks")))
+            _course_weeks = max(1, int(_course_weeks_match.group())) if _course_weeks_match else 4
+            _end = _start + timedelta(days=_course_weeks * 7)
+            embedded_batch["end_date"] = _end.strftime("%Y-%m-%d")
+        except (ValueError, TypeError):
+            return jsonify({"error":"Enter a valid batch start date and course duration."}),400
         if _end < datetime.now().date():
             return jsonify({"error":"This batch has already ended. Choose an end date today or later."}),400
         if _start < datetime.now().date():
@@ -3192,6 +3214,14 @@ def api_item(entity, item_id):
             batch_name=payload.pop("batch_name", None)
             batch_fields={"trainer_id":t["id"],"start_date":payload.pop("batch_start_date", None),"end_date":payload.pop("batch_end_date", None),"timing":payload.pop("batch_timing", None),"capacity":payload.pop("batch_capacity", None),"status":payload.pop("batch_status", None)}
             batch=next((b for b in BATCHES if b.get("course_id")==item.get("id") and b.get("trainer_id")==t["id"] and b.get("institution_id")==current_institution_id()),None)
+            _batch_start = batch_fields.get("start_date") or (batch or {}).get("start_date")
+            if _batch_start:
+                try:
+                    _sd = datetime.strptime(str(_batch_start), "%Y-%m-%d").date()
+                    _wm = re.search(r"\d+", str(payload.get("duration") or item.get("duration") or "4 Weeks"))
+                    batch_fields["end_date"] = (_sd + timedelta(days=(max(1, int(_wm.group())) if _wm else 4) * 7)).strftime("%Y-%m-%d")
+                except (ValueError, TypeError):
+                    return jsonify({"error":"Enter a valid batch start date and course duration."}),400
             if batch_name is not None and batch_name.strip():
                 if batch:
                     batch["name"]=batch_name.strip()
@@ -3208,10 +3238,13 @@ def api_item(entity, item_id):
                 if any(str(b.get("name", "")).strip().casefold() == batch_name.strip().casefold() and (not batch or not _id_equal(b.get("id"), batch.get("id"))) for b in institution_filter(BATCHES)):
                     return jsonify({"error":"This batch name already exists. Please use a unique batch name."}),409
                 try:
-                    _end_date = datetime.strptime(str(batch_fields.get("end_date") or (batch or {}).get("end_date") or ""), "%Y-%m-%d").date()
                     _start_date = datetime.strptime(str(batch_fields.get("start_date") or (batch or {}).get("start_date") or ""), "%Y-%m-%d").date()
-                except ValueError:
-                    return jsonify({"error":"Enter valid batch start and end dates."}),400
+                    _duration_match = re.search(r"\d+", str(payload.get("duration") or item.get("duration") or "4 Weeks"))
+                    _duration_weeks = max(1, int(_duration_match.group())) if _duration_match else 4
+                    _end_date = _start_date + timedelta(days=_duration_weeks * 7)
+                    batch_fields["end_date"] = _end_date.strftime("%Y-%m-%d")
+                except (ValueError, TypeError):
+                    return jsonify({"error":"Enter a valid batch start date and course duration."}),400
                 if _end_date < datetime.now().date():
                     return jsonify({"error":"This batch has already ended. Choose an end date today or later."}),400
                 if _end_date < _start_date:
@@ -4232,10 +4265,12 @@ def course_detail(course_id):
 @login_required
 def create_course_lesson():
     role = session.get("user_role")
-    if role != "admin":
-        flash("Only the institute admin can add course content. Trainers and students can view and learn.", "error")
+    if role not in {"admin", "trainer"}:
+        flash("You do not have permission to add course content.", "error")
         return redirect(url_for("course_content_page"))
     course_id = int(request.form.get("course_id") or 0)
+    if role == "trainer" and course_id not in {_payment_int(c.get("id"), -1) for c in trainer_scope().get("courses", [])}:
+        return "Access denied: this course is not assigned to you", 403
     kind = request.form.get("kind", "Video")
     title = request.form.get("title", "").strip()
     description = request.form.get("description", "").strip()
@@ -4303,9 +4338,14 @@ def _managed_course_lesson(lesson_id):
     lesson = next((x for x in institution_filter(COURSE_LESSONS) if int(x.get("id") or 0) == int(lesson_id)), None)
     if not lesson:
         return None
-    if session.get("user_role") != "admin":
-        return None          # content is managed by the institute admin only
-    return lesson
+    role = session.get("user_role")
+    if role == "admin":
+        return lesson
+    if role == "trainer":
+        allowed_ids = {_payment_int(c.get("id"), -1) for c in trainer_scope().get("courses", [])}
+        if _payment_int(lesson.get("course_id"), -2) in allowed_ids:
+            return lesson
+    return None
 
 
 @app.route("/course-content/<int:lesson_id>/edit", methods=["GET", "POST"])

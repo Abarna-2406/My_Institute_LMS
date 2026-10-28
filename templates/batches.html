@@ -67,7 +67,7 @@
           <div class="form-group">
             <label>Course</label>
             <select name="course_id" class="form-control" required>
-              {% for c in courses %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
+              {% for c in courses %}<option value="{{ c.id }}" data-duration-weeks="{{ (c.duration|string).split(' ')[0] }}">{{ c.name }}</option>{% endfor %}
             </select>
           </div>
           <div class="form-group">
@@ -82,7 +82,7 @@
           </div>
           <div class="form-group">
             <label>End Date</label>
-            <input type="date" name="end_date" class="form-control" required>
+            <input type="date" name="end_date" class="form-control" required readonly title="Calculated automatically from the selected course duration">
           </div>
           <input type="hidden" name="timing" id="batchTiming" value="">
           <div class="form-group">
@@ -123,11 +123,19 @@ function openEditBatchModal(batch){
   const form=document.getElementById('batchForm');
   form.addEventListener('submit',syncBatchTiming);
   const today=new Date(); const minDate=new Date(today.getTime()-today.getTimezoneOffset()*60000).toISOString().slice(0,10);
-  const start=form.querySelector('[name="start_date"]'), end=form.querySelector('[name="end_date"]');
+  const start=form.querySelector('[name="start_date"]'), end=form.querySelector('[name="end_date"]'), course=form.querySelector('[name="course_id"]');
   start.min=minDate; end.min=minDate;
-  start.addEventListener('change',function(){end.min=start.value||minDate;if(end.value&&end.value<start.value)end.value=start.value;});
+  function calculateBatchEnd(){
+    if(!start.value)return;
+    const opt=course.options[course.selectedIndex]; const weeks=Math.max(1,parseInt(opt&&opt.dataset.durationWeeks||'4',10)||4);
+    const d=new Date(start.value+'T12:00:00'); d.setDate(d.getDate()+weeks*7);
+    end.value=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); end.min=start.value;
+  }
+  start.addEventListener('change',calculateBatchEnd); course.addEventListener('change',calculateBatchEnd);
+  form.addEventListener('reset',function(){setTimeout(calculateBatchEnd,0);});
+  calculateBatchEnd();
 })();
-if (new URLSearchParams(window.location.search).get('open') === 'add') { setTimeout(openAddBatchModal, 150); }
+if (new URLSearchParams(window.location.search).get('open') === 'add') { const cleanUrl = new URL(window.location.href); cleanUrl.searchParams.delete('open'); window.history.replaceState({}, document.title, cleanUrl.pathname + cleanUrl.search + cleanUrl.hash); setTimeout(openAddBatchModal, 150); }
 document.getElementById('batchForm').addEventListener('submit', function(e){
   e.preventDefault();
   submitEntityForm('batches', batchEditId ? 'PUT' : 'POST', this, batchEditId);

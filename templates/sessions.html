@@ -342,6 +342,7 @@ document.getElementById('sessionForm').addEventListener('submit', async function
       if(!response.ok) throw new Error(result.error||'Could not save session for '+date);
     }
     showToast(sessionEditId?'Session updated successfully':(dates.length===1?'Session scheduled successfully':dates.length+' sessions scheduled successfully'),'success');
+    closeModal('sessionModal');
     setTimeout(()=>window.location.reload(),500);
   }catch(err){showToast(err.message||'Unable to save sessions.','error');}
   finally{btn.disabled=false;btn.innerHTML=original;}
@@ -370,7 +371,7 @@ function saveRecording(){
     })
     .catch(function(){ showToast('Unable to save recording link','error'); });
 }
-if(new URLSearchParams(location.search).get('open')==='add'){setTimeout(openAddSessionModal,150);}
+if(new URLSearchParams(location.search).get('open')==='add'){const cleanUrl=new URL(window.location.href);cleanUrl.searchParams.delete('open');window.history.replaceState({},document.title,cleanUrl.pathname+cleanUrl.search+cleanUrl.hash);setTimeout(openAddSessionModal,150);}
 {% endif %}
 
 {% if student_view %}

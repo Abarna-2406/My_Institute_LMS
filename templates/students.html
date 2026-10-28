@@ -186,6 +186,6 @@ document.getElementById('studentForm').addEventListener('submit', function(e){
       else showToast(result.data.error || 'Something went wrong','error');
     }).catch(function(){showToast('Network error. Please try again.','error');});
 });
-if(new URLSearchParams(location.search).get('open')==='add'){setTimeout(openAddStudentModal,150);}
+if(new URLSearchParams(location.search).get('open')==='add'){const cleanUrl=new URL(window.location.href);cleanUrl.searchParams.delete('open');window.history.replaceState({},document.title,cleanUrl.pathname+cleanUrl.search+cleanUrl.hash);setTimeout(openAddStudentModal,150);}
 </script>
 {% endblock %}
