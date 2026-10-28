@@ -1475,6 +1475,7 @@ html.dark-mode .student-calendar-fullcalendar .fc-list .student-calendar-event-m
 
 /* Click a calendar event to see complete details in a theme-aware dialog. */
 .student-session-detail-overlay[hidden] { display: none !important; }
+.student-session-detail-actions [hidden] { display: none !important; }
 .student-session-detail-overlay { position: fixed; inset: 0; z-index: 2500; display: flex; align-items: center; justify-content: center; padding: 18px; background: rgba(10, 22, 42, .58); }
 .student-session-detail-card { width: min(100%, 520px); max-height: min(88vh, 760px); overflow: auto; padding: 22px; border: 1px solid var(--border-color, var(--gray-200)); border-radius: 16px; background: var(--white, #fff); color: var(--gray-800, #1f2937); box-shadow: 0 22px 70px rgba(10, 22, 42, .24); }
 .student-session-detail-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 16px; }

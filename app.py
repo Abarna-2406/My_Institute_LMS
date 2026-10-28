@@ -828,16 +828,20 @@ def build_jitsi_config(live_session, role):
         segments, host = [], ""
     room = segments[-1] if segments else ("lms-session-%s" % live_session.get("id"))
     if jaas_ready():
-        return {"mode": "jaas", "domain": "8x8.vc", "room": "%s/%s" % (JAAS_APP_ID, room),
+        jaas_room = "%s/%s" % (JAAS_APP_ID, room)
+        return {"mode": "jaas", "domain": "8x8.vc", "room": jaas_room,
+                "meetingUrl": "https://8x8.vc/" + jaas_room,
                 "script": "https://8x8.vc/%s/external_api.js" % JAAS_APP_ID,
                 "jwt": build_jaas_jwt(session.get("user_name", "Guest"), session.get("user_email", ""),
                                       role in {"admin", "trainer"}, session.get("user_id", 0))}
     if host.endswith("8x8.vc") and len(segments) >= 2:   # a JaaS link saved earlier but keys not configured now
         return {"mode": "jaas-nokeys", "domain": "8x8.vc", "room": "/".join(segments),
+                "meetingUrl": link or ("https://8x8.vc/" + "/".join(segments)),
                 "script": "https://8x8.vc/%s/external_api.js" % segments[0], "jwt": parse_qs_jwt(link)}
     domain = JITSI_DOMAIN
+    meeting_url = link if host == domain and link.startswith(("https://", "http://")) else ("https://%s/%s" % (domain, room))
     return {"mode": "public" if domain == "meet.jit.si" else "selfhosted", "domain": domain, "room": room,
-            "script": "https://%s/external_api.js" % domain, "jwt": ""}
+            "meetingUrl": meeting_url, "script": "https://%s/external_api.js" % domain, "jwt": ""}
 
 
 def parse_qs_jwt(link):

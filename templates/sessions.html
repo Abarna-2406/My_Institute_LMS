@@ -487,14 +487,21 @@ function openStudentSessionDetails(ev) {
   document.getElementById('studentSessionDetailBatch').textContent = props.batchName || '—';
   document.getElementById('studentSessionDetailTrainer').textContent = props.trainerName || '—';
   const status = document.getElementById('studentSessionDetailStatus');
-  const hasStarted = Boolean(props.classStarted) || (ev.start && ev.start <= new Date() && (!ev.end || ev.end > new Date()));
+  // Use the browser's current local clock for the actual event window; do not trust
+  // a stale/server-computed classStarted flag when deciding whether a student can join.
+  const now = new Date();
+  const hasStarted = Boolean(ev.start && ev.start <= now && (!ev.end || ev.end > now));
   status.textContent = isOver ? 'Class Over' : (hasStarted ? (hasLink ? 'Ongoing class' : 'Live link not ready') : 'Session is not started yet');
   status.className = 'student-session-detail-status ' + (isOver ? 'is-over' : (hasLink ? 'is-upcoming' : 'is-pending'));
   const message = document.getElementById('studentSessionDetailMessage');
   message.textContent = isOver ? 'This session has ended. Joining is no longer available.' : (!hasStarted ? 'Session is not started yet. Join & Track will be available at the scheduled time.' : (hasLink ? 'Your live class is ongoing. Select Join & Track to enter the session.' : 'The trainer has not generated the live session link yet. Please check again later.'));
   const join = document.getElementById('studentSessionDetailJoin');
   join.href = studentLiveBase.replace(/0$/, String(props.sessionId));
-  join.hidden = isOver || !hasStarted || !hasLink;
+  const canStudentJoin = !isOver && hasStarted && hasLink;
+  join.hidden = !canStudentJoin;
+  // .btn uses display:flex/inline-flex, which can override the browser's default
+  // [hidden] styling. Explicitly enforce visibility for upcoming student sessions.
+  join.style.display = canStudentJoin ? 'inline-flex' : 'none';
   overlay.hidden = false;
   document.body.style.overflow = 'hidden';
   document.getElementById('studentSessionDetailClose').focus();

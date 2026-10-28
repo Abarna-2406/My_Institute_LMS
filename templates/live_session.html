@@ -28,8 +28,9 @@
   </div>
   <div id="jitsiContainer" style="height:70vh;min-height:520px;border-radius:14px;overflow:hidden;background:#0b1220;"></div>
   <div class="page-actions" id="fallbackActions" style="display:none;margin-top:14px;justify-content:flex-start;gap:10px;flex-wrap:wrap;">
-    <button type="button" class="btn btn-primary" onclick="retryMeeting()"><i class="fa-solid fa-rotate"></i> Retry meeting</button>
-    <span class="cell-muted">The class always opens inside this page. Allow camera/microphone for this site, then retry.</span>
+    <button type="button" class="btn btn-primary" onclick="retryMeeting()"><i class="fa-solid fa-rotate"></i> Retry embedded meeting</button>
+    <a class="btn btn-outline" id="openJitsiFallback" href="#" target="_blank" rel="noopener noreferrer"><i class="fa-solid fa-arrow-up-right-from-square"></i> Open Jitsi in New Tab</a>
+    <span class="cell-muted">If embedding is blocked by the browser or Jitsi server, use the new tab. Attendance tracking can only confirm the embedded meeting connection.</span>
   </div>
   {% if user_role in ['admin','trainer'] and jitsi.mode in ['public'] %}
   <div class="live-attendance-notice" style="margin-top:12px"><i class="fa-solid fa-circle-info"></i><div><strong>Using the free public Jitsi server</strong><br>For reliable in-page classes without login prompts or time limits, add your JaaS keys (JAAS_APP_ID, JAAS_KEY_ID, JAAS_PRIVATE_KEY) in <code>.env</code>.</div></div>
@@ -47,6 +48,7 @@ const durationMinutes = {{ duration_minutes|tojson }};
 const trackingEnabled = {{ tracking_enabled|tojson }};
 const userRole = {{ user_role|tojson }};
 const jitsiCfg = {{ jitsi|tojson }};
+const meetingUrl = jitsiCfg.meetingUrl || ('https://' + jitsiCfg.domain + '/' + jitsiCfg.room);
 const displayName = {{ (session.get('user_name') or 'Guest')|tojson }};
 const displayEmail = {{ (session.get('user_email') or '')|tojson }};
 const returnUrl = {{ url_for('sessions_page')|tojson }};
@@ -57,6 +59,8 @@ function setStatus(text, cls) {
   el.textContent = text; el.className = 'badge ' + (cls || 'badge-blue');
 }
 function showFallback(message) {
+  const fallbackLink = document.getElementById('openJitsiFallback');
+  if (fallbackLink) fallbackLink.href = meetingUrl;
   document.getElementById('browserNotice').style.display = 'flex';
   document.getElementById('browserNoticeText').textContent = message;
   document.getElementById('jitsiContainer').style.display = 'none';
@@ -115,7 +119,10 @@ document.addEventListener('visibilitychange', () => { if (joined) heartbeat(); }
 function loadJitsiApi(src) {
   return new Promise((resolve, reject) => {
     const script = document.createElement('script'); script.src = src; script.async = true;
-    script.onload = resolve; script.onerror = () => reject(new Error('Jitsi API script failed to load.')); document.head.appendChild(script);
+    const timeout = setTimeout(() => reject(new Error('Timed out loading the Jitsi meeting API. Check network access to the Jitsi server.')), 15000);
+    script.onload = () => { clearTimeout(timeout); resolve(); };
+    script.onerror = () => { clearTimeout(timeout); reject(new Error('Jitsi API script failed to load. Check network access to the Jitsi server.')); };
+    document.head.appendChild(script);
   });
 }
 let startTimer = null;
