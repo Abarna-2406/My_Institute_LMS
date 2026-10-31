@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Mapping{% endblock %}
+{% block page_title %}Course · Batch · Trainer · Student Mapping{% endblock %}
+{% block page_crumb %}See which batches, trainers and students belong to every course{% endblock %}
+{% block content %}
+<div class="card">
+  <div class="card-header">
+    <h3><i class="fa-solid fa-sitemap"></i>&nbsp; Mapping <span class="badge badge-blue">{{ mapping|length }} courses</span></h3>
+    <div class="page-actions">
+      <a class="btn btn-outline btn-sm" data-testid="mapping-export-excel" href="{{ url_for('export_report', report_type='mapping', fmt='excel') }}"><i class="fa-solid fa-file-excel"></i> Export Excel</a>
+      <a class="btn btn-outline btn-sm" data-testid="mapping-export-pdf" href="{{ url_for('export_report', report_type='mapping', fmt='pdf') }}"><i class="fa-solid fa-file-pdf"></i> Export PDF</a>
+    </div>
+  </div>
+  <div class="toolbar">
+    <div class="search-box"><i class="fa-solid fa-magnifying-glass" style="color:var(--gray-500)"></i>
+      <input type="text" id="mapSearch" data-testid="mapping-search" placeholder="Search course, batch, trainer or student..." oninput="filterMapping()"></div>
+    <button class="btn btn-outline btn-sm" type="button" data-testid="mapping-expand-all" onclick="toggleAll(true)">Expand all</button>
+    <button class="btn btn-outline btn-sm" type="button" data-testid="mapping-collapse-all" onclick="toggleAll(false)">Collapse all</button>
+  </div>
+  <div class="card-body" id="mapList">
+    {% for m in mapping %}
+    <details class="map-course" data-testid="mapping-course-{{ m.course.id }}" {{ 'open' if loop.index <= 3 }}>
+      <summary><i class="fa-solid fa-chevron-right chev"></i><i class="fa-solid fa-book-open" style="color:var(--blue-600)"></i>
+        <span>{{ m.course.name }}</span>
+        <span class="map-meta">{{ m.batches|length }} batch{{ '' if m.batches|length == 1 else 'es' }} · {{ m.trainers|join(', ') or 'No trainer' }} · {{ m.student_count }} student{{ '' if m.student_count == 1 else 's' }}</span>
+        <a class="btn btn-sm btn-outline" style="margin-left:auto" href="{{ url_for('course_detail', course_id=m.course.id) }}" onclick="event.stopPropagation()">Open course</a>
+      </summary>
+      <div class="map-batches">
+        {% for b in m.batches %}
+        <div class="map-batch" data-testid="mapping-batch-{{ b.batch.id }}">
+          <h4><i class="fa-solid fa-layer-group"></i> <a href="{{ url_for('batches_page') }}?search={{ b.batch.name|urlencode }}">{{ b.batch.name }}</a>
+            <span class="map-meta">· {{ b.batch.start_date }} to {{ b.batch.end_date }} · {{ b.batch.status }}</span></h4>
+          <div class="map-meta"><i class="fa-solid fa-chalkboard-user"></i> Trainer: <strong>{{ b.trainer }}</strong> · {{ b.students|length }} student{{ '' if b.students|length == 1 else 's' }}</div>
+          <div class="map-students">
+            {% for s in b.students %}<a class="map-student" href="{{ url_for('student_report', student_id=s.id) }}">{{ s.name }}</a>{% else %}<span class="map-meta">No students in this batch yet.</span>{% endfor %}
+          </div>
+        </div>
+        {% endfor %}
+        {% if m.unassigned %}
+        <div class="map-batch" style="border-left-color:#d97706">
+          <h4><i class="fa-solid fa-circle-exclamation"></i> Enrolled without a batch</h4>
+          <div class="map-students">{% for s in m.unassigned %}<a class="map-student" href="{{ url_for('student_report', student_id=s.id) }}">{{ s.name }}</a>{% endfor %}</div>
+        </div>
+        {% endif %}
+        {% if not m.batches and not m.unassigned %}<p class="map-meta">No batches or students for this course yet.</p>{% endif %}
+      </div>
+    </details>
+    {% else %}<p class="empty-state">No courses yet.</p>{% endfor %}
+    <p class="empty-state" id="mapEmpty" style="display:none">Nothing matches your search.</p>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}<script>
+function filterMapping(){var q=document.getElementById('mapSearch').value.trim().toLowerCase(),shown=0;document.querySelectorAll('.map-course').forEach(function(d){var hit=!q||d.textContent.toLowerCase().indexOf(q)>-1;d.style.display=hit?'':'none';if(hit){shown++;if(q)d.open=true;}});document.getElementById('mapEmpty').style.display=shown?'none':'block';}
+function toggleAll(open){document.querySelectorAll('.map-course').forEach(function(d){d.open=open;});}
+</script>{% endblock %}

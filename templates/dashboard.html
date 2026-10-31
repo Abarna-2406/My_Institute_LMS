@@ -143,10 +143,7 @@
 
     <div class="hm-card student-announcements-card">
       <div class="hm-head"><h3>Recent Announcements</h3><a href="{{ url_for('announcements_page') }}">View All</a></div>
-      {% for a in recent_announcements %}
-      <div class="hm-note-li"><span class="n-ic {{ 'high' if a.priority == 'High' }}"><i class="fa-solid {{ 'fa-triangle-exclamation' if a.priority == 'High' else 'fa-bullhorn' }}"></i></span>
-        <div class="n-t"><strong>{{ a.title }}</strong><span>{{ a.message }}</span></div><time>{{ a.date }}</time></div>
-      {% else %}<div class="hm-empty">No announcements.</div>{% endfor %}
+      {% with items=recent_announcements %}{% include "_announcement_ticker.html" %}{% endwith %}
     </div>
   </div>
 

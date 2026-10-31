@@ -1,0 +1,50 @@
+/* ---- Announcement ticker + detail dialog ---- */
+.ann-ticker{position:relative;height:280px;overflow:hidden;-webkit-mask-image:linear-gradient(180deg,transparent 0,#000 18px,#000 calc(100% - 18px),transparent 100%);mask-image:linear-gradient(180deg,transparent 0,#000 18px,#000 calc(100% - 18px),transparent 100%);}
+.ann-ticker-track.scroll{animation:annScroll calc(var(--ann-count,4) * 4s) linear infinite;}
+.ann-ticker:hover .ann-ticker-track.scroll,.ann-ticker:focus-within .ann-ticker-track.scroll{animation-play-state:paused;}
+@keyframes annScroll{from{transform:translateY(0)}to{transform:translateY(-50%)}}
+.ann-item{width:100%;text-align:left;background:transparent;border:0;border-bottom:1px solid var(--hm-line,#eee);cursor:pointer;font:inherit;color:inherit;border-radius:10px;padding:10px 8px;transition:background-color .2s ease;}
+.ann-item:hover,.ann-item:focus-visible{background:rgba(124,77,255,.07);outline:none;}
+.ann-item .n-t strong{color:var(--hm-primary,#4f46e5);text-decoration:underline;text-underline-offset:3px;}
+.ann-item .n-t span{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+.ann-new{display:inline-block;margin-left:6px;padding:1px 6px;border-radius:6px;background:#ef476f;color:#fff;font-size:10px;font-style:normal;text-decoration:none;animation:annBlink 1.2s ease-in-out infinite;}
+@keyframes annBlink{50%{opacity:.35}}
+.ann-hint{margin:8px 0 0;font-size:12px;color:var(--gray-500,#64748b);}
+.ann-detail-meta{font-size:12.5px;color:var(--gray-500,#64748b);margin-bottom:12px;}
+.ann-detail-msg{white-space:pre-wrap;line-height:1.6;font-size:14.5px;}
+.ann-title-link{background:none;border:0;padding:0;font:inherit;font-weight:700;color:var(--blue-600,#2563eb);cursor:pointer;text-align:left;text-decoration:underline;text-underline-offset:3px;}
+a.stat-card{display:block;text-decoration:none;color:inherit;transition:transform .2s ease,box-shadow .2s ease;}
+a.stat-card:hover{transform:translateY(-2px);box-shadow:0 10px 24px rgba(15,23,42,.08);}
+.stat-link{font-size:12px;color:var(--blue-600,#2563eb);font-weight:600;margin-top:4px;display:inline-block;}
+
+.sidebar-nav a .lbl.lbl-long{font-size:10px;word-break:normal;overflow-wrap:normal;letter-spacing:-.2px;}
+
+/* ---- Certificates ---- */
+.cert-brand{display:flex;gap:18px;flex-wrap:wrap;align-items:center;}
+.cert-brand-slot{width:150px;height:80px;border:1px dashed #cbd5e1;border-radius:10px;display:flex;align-items:center;justify-content:center;background:#fff;overflow:hidden;}
+.cert-brand-slot img{max-width:100%;max-height:100%;object-fit:contain;}
+.cert-table td,.cert-table th{vertical-align:middle;}
+.cert-table select{min-width:150px;}
+.cert-toolbar{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0;}
+.cert-chip{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11.5px;font-weight:600;}
+.cert-chip.done{background:#dcfce7;color:#166534;}
+.cert-chip.prog{background:#fef3c7;color:#92400e;}
+.cert-chip.issued{background:#dbeafe;color:#1e40af;}
+
+/* ---- Mapping tree ---- */
+.map-course{border:1px solid var(--gray-200,#e2e8f0);border-radius:12px;margin-bottom:12px;background:#fff;overflow:hidden;}
+.map-course>summary{list-style:none;cursor:pointer;padding:14px 16px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;font-weight:700;}
+.map-course>summary::-webkit-details-marker{display:none;}
+.map-course>summary .chev{transition:transform .2s ease;color:var(--gray-500,#64748b);}
+.map-course[open]>summary .chev{transform:rotate(90deg);}
+.map-meta{font-weight:500;font-size:12.5px;color:var(--gray-500,#64748b);}
+.map-batches{padding:0 16px 14px 40px;display:grid;gap:10px;}
+.map-batch{border-left:3px solid var(--blue-600,#2563eb);padding:8px 12px;background:#f8fafc;border-radius:0 10px 10px 0;}
+.map-batch h4{margin:0 0 4px;font-size:14px;}
+.map-students{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;}
+.map-student{background:#fff;border:1px solid #e2e8f0;border-radius:999px;padding:3px 10px;font-size:12.5px;}
+.course-batch-row{display:grid;grid-template-columns:1fr 1.3fr;gap:8px;align-items:center;margin-bottom:8px;}
+.course-batch-row label{font-weight:600;font-size:13px;margin:0;}
+.help-box{background:#f1f5f9;border-radius:10px;padding:10px 14px;font-size:12.8px;line-height:1.55;color:#334155;}
+html.dark-mode .map-course,html.dark-mode .cert-brand-slot,html.dark-mode .map-student{background:#111827;border-color:#374151;}
+html.dark-mode .map-batch,html.dark-mode .help-box{background:#1f2937;color:#e5e7eb;}

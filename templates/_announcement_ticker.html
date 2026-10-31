@@ -1,0 +1,20 @@
+{# Scrolling announcement list (pauses on hover). Click an item to open its details. Expects `items`. #}
+{% if items %}
+<div class="ann-ticker" data-testid="announcement-ticker">
+  <div class="ann-ticker-track {{ 'scroll' if items|length > 2 }}" style="--ann-count: {{ items|length }}">
+    {% for pass in ([0, 1] if items|length > 2 else [0]) %}
+    {% for a in items %}
+    <button type="button" class="ann-item hm-note-li" data-ann='{{ a|tojson }}' onclick="openAnnouncementDetail(this)"
+            data-testid="announcement-item-{{ a.id }}{{ '-dup' if pass }}" {{ 'aria-hidden=true tabindex=-1' if pass }}>
+      <span class="n-ic {{ 'high' if a.priority == 'High' }}"><i class="fa-solid {{ 'fa-triangle-exclamation' if a.priority == 'High' else 'fa-bullhorn' }}"></i></span>
+      <span class="n-t"><strong>{{ a.title }}{% if a.priority == 'High' %} <em class="ann-new">IMPORTANT</em>{% endif %}</strong><span>{{ a.message }}</span></span>
+      <time>{{ a.date }}</time>
+    </button>
+    {% endfor %}
+    {% endfor %}
+  </div>
+</div>
+<p class="ann-hint"><i class="fa-solid fa-hand-pointer"></i> Click an announcement to read the full details.</p>
+{% else %}
+<div class="hm-empty">No announcements.</div>
+{% endif %}

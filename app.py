@@ -15,8 +15,9 @@ from functools import wraps
 
 from flask import (
     Flask, render_template, request, redirect, url_for,
-    session, jsonify, flash, send_file
+    session, jsonify, flash, send_file, abort
 )
+from xml.sax.saxutils import escape as _xml_escape_title
 from werkzeug.security import generate_password_hash, check_password_hash
 import hmac
 import hashlib
@@ -195,10 +196,8 @@ PAYMENTS = [
 # Trainer salary/payroll records.
 SALARIES = []
 
-MATERIALS = [
-    {"id": 1, "title": "React Hooks Notes", "description": "Trainer notes and examples for the React Hooks module.", "course_id": 1, "batch_id": 1, "type": "PDF", "url": "#", "date": "2026-09-18", "uploaded_by": "Arun Kumar"},
-    {"id": 2, "title": "Python Pandas Practice Sheet", "description": "Practice material for DataFrame operations and analysis.", "course_id": 2, "batch_id": 2, "type": "Document", "url": "#", "date": "2026-09-17", "uploaded_by": "Priya Sharma"},
-]
+# Materials are now part of Course Content (Document / Web link items). Kept only for migration of old data.
+MATERIALS = []
 
 FORUM_POSTS = [
     {"id": 1, "title": "Welcome to the Discussion Forum", "message": "Use this space for course doubts, ideas, announcements and peer discussion.", "author": "Institute Admin", "role": "admin", "date": "2026-09-20 10:00"},
@@ -914,6 +913,8 @@ def init_db():
                 created_at TIMESTAMPTZ DEFAULT NOW()
             )
         """)
+        con.execute("ALTER TABLE institutions ADD COLUMN IF NOT EXISTS logo_url TEXT")
+        con.execute("ALTER TABLE institutions ADD COLUMN IF NOT EXISTS signature_url TEXT")
         con.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 id BIGSERIAL PRIMARY KEY,
@@ -999,6 +1000,8 @@ def init_db():
         con.execute("CREATE INDEX IF NOT EXISTS ix_payment_orders_course ON payment_orders(institution_id, course_id, created_at DESC)")
 
         con.execute("INSERT INTO institutions(id,name,code,email) VALUES(1,'EduBridge Learning Institute','MYINST','admin@myinstitute.edu') ON CONFLICT (id) DO NOTHING")
+        # The demo institute is inserted with an explicit id, so move the id sequence past it.
+        con.execute("SELECT setval(pg_get_serial_sequence('institutions','id'), GREATEST((SELECT MAX(id) FROM institutions), 1))")
         # Seed demo accounts only when the database is empty.
         if not con.execute("SELECT 1 FROM users LIMIT 1").fetchone():
             con.execute("""
@@ -1260,6 +1263,105 @@ for _g in GUARDIANS:
     _g.pop("email", None)
 save_entity("guardians", GUARDIANS)
 
+
+def migrate_materials_to_course_content():
+    """One-time move of old 'Materials' (links) into Course Content as Web link items."""
+    if not MATERIALS:
+        return
+    for m in list(MATERIALS):
+        url = str(m.get("url") or "").strip()
+        if not url.lower().startswith(("http://", "https://")):
+            continue
+        cid = _payment_int(m.get("course_id"), 0)
+        same_course = [x for x in COURSE_LESSONS if _payment_int(x.get("course_id"), -1) == cid]
+        COURSE_LESSONS.append({
+            "id": next_id(COURSE_LESSONS), "institution_id": m.get("institution_id", 1), "course_id": cid,
+            "title": m.get("title") or "Learning material", "description": m.get("description", ""),
+            "kind": "Document", "external_url": url, "video_url": "", "assessment_id": None,
+            "position": max([_payment_int(x.get("position"), 0) for x in same_course] or [0]) + 1,
+            "module_name": "Week 1", "module_position": 1,
+            "created_by": m.get("uploaded_by") or "Institute", "migrated_from_material": m.get("id"),
+        })
+    save_entity("course_lessons", COURSE_LESSONS)
+    MATERIALS[:] = []
+    save_entity("materials", MATERIALS)
+
+
+# ---------------------------------------------------------------------------
+# PER-TAB LOGIN: each browser tab keeps its own session cookie (eb_s_<tabid>).
+# ---------------------------------------------------------------------------
+from flask.sessions import SecureCookieSessionInterface
+_TAB_RE = re.compile(r"^[a-z0-9]{6,24}$")
+
+def request_tab_id():
+    tab = request.headers.get("X-Tab-Id") or request.args.get("_tab") or request.cookies.get("eb_tab") or ""
+    return tab if _TAB_RE.match(tab) else ""
+
+class TabSessionInterface(SecureCookieSessionInterface):
+    def get_cookie_name(self, app):
+        tab = request_tab_id()
+        return "eb_s_" + tab if tab else app.config["SESSION_COOKIE_NAME"]
+
+app.session_interface = TabSessionInterface()
+
+
+@app.before_request
+def refresh_shared_data():
+    """Reload records from PostgreSQL on every request so all workers/tabs see the latest data."""
+    if request.endpoint in (None, "static"):
+        return
+    try:
+        con = get_db()
+        try:
+            rows = con.execute("SELECT entity, payload FROM records ORDER BY entity, id").fetchall()
+        finally:
+            con.close()
+    except Exception:
+        app.logger.exception("Could not refresh LMS data from PostgreSQL")
+        return
+    grouped = {}
+    for r in rows:
+        grouped.setdefault(r["entity"], []).append(dict(r["payload"]))
+    for entity, items in DATA.items():
+        items[:] = grouped.get(entity, [])
+
+
+INSTITUTION_ASSET_EXTS = {"png", "jpg", "jpeg", "svg"}
+
+def save_institution_asset(iid, uploaded, kind):
+    """Save an institute logo/signature under static/institution_assets. Returns (url, error)."""
+    ext = uploaded.filename.rsplit(".", 1)[-1].lower() if "." in uploaded.filename else ""
+    if ext not in INSTITUTION_ASSET_EXTS:
+        return None, "Logo and signature must be PNG, JPG or SVG files."
+    uploaded.stream.seek(0, os.SEEK_END)
+    size = uploaded.stream.tell()
+    uploaded.stream.seek(0)
+    if size > 5 * 1024 * 1024:
+        return None, "Logo and signature files must be 5 MB or smaller."
+    folder = os.path.join(app.root_path, "static", "institution_assets")
+    os.makedirs(folder, exist_ok=True)
+    name = "inst%s_%s_%s.%s" % (int(iid), kind, int(time.time()), ext)
+    uploaded.save(os.path.join(folder, name))
+    return url_for("static", filename="institution_assets/" + name), None
+
+
+def institution_branding(iid=None):
+    try:
+        iid = int(iid) if iid not in (None, "") else int(session.get("institution_id", 1) or 1)
+    except (TypeError, ValueError):
+        iid = 1
+    try:
+        con = get_db()
+        try:
+            row = con.execute("SELECT name, logo_url, signature_url FROM institutions WHERE id=%s", (iid,)).fetchone()
+        finally:
+            con.close()
+        if row:
+            return dict(row)
+    except Exception:
+        app.logger.exception("Could not load institute branding")
+    return {"name": "EduBridge Learning Institute", "logo_url": None, "signature_url": None}
+
 def allowed(role, endpoint):
     """Role-based page access.
     Admin: full institute access.
@@ -1269,11 +1371,14 @@ def allowed(role, endpoint):
     """
     if role == "admin":
         return True
+    if endpoint == "mapping_page":
+        return False
     if role == "trainer":
         return endpoint in {
             "dashboard", "courses_page", "students_page", "batches_page", "trainers_page", "global_search", "attendance_page", "reminder_feed",
             "announcements_page", "assessments_page", "reports_page", "sessions_page", "complete_live_session",
-            "recordings_page", "salaries_page", "discussion_forum", "export_report", "student_report_pdf", "student_report", "certificates_page", "issue_certificate", "view_certificate", "course_content_page", "course_detail", "course_material", "live_session_page", "course_video", "logout"
+            "recordings_page", "salaries_page", "discussion_forum", "export_report", "student_report_pdf", "student_report", "certificates_page", "issue_certificate", "view_certificate", "course_content_page", "course_detail", "course_material", "live_session_page", "course_video", "logout",
+            "create_course_lesson", "edit_course_lesson", "delete_course_lesson"
         }
     if role == "student":
         return endpoint in {
@@ -1395,6 +1500,14 @@ def register_role(role):
                     return render_template("register_role.html", role=role, role_label=labels[role])
                 cur=con.execute("INSERT INTO institutions(name,code,email) VALUES(%s,%s,%s) RETURNING id",(institution_name,institution_code,email))
                 iid=cur.fetchone()["id"]
+                logo=request.files.get("institution_logo")
+                if logo and logo.filename:
+                    logo_url, logo_error = save_institution_asset(iid, logo, "logo")
+                    if logo_error:
+                        con.rollback()
+                        flash(logo_error,"error")
+                        return render_template("register_role.html", role=role, role_label=labels[role])
+                    con.execute("UPDATE institutions SET logo_url=%s WHERE id=%s",(logo_url,iid))
             else:
                 inst=con.execute("SELECT * FROM institutions WHERE upper(code)=upper(?)",(institution_code,)).fetchone()
                 if not inst:
@@ -1508,7 +1621,9 @@ def current_institution_name():
 
 @app.context_processor
 def inject_institution_name():
-    return {"institution_name": current_institution_name()}
+    branding = institution_branding() if "user_id" in session else {}
+    return {"institution_name": branding.get("name") or current_institution_name(),
+            "institution_logo": branding.get("logo_url"), "tab_id": request_tab_id()}
 
 def institution_filter(items):
     iid = current_institution_id()
@@ -2004,7 +2119,7 @@ def home():
     for i, r in enumerate(performers):
         r["color"] = bar_colors[i % len(bar_colors)]
 
-    notifications = sorted(announcements, key=lambda a: str(a.get("date") or ""), reverse=True)[:4]
+    notifications = sorted(announcements, key=lambda a: str(a.get("date") or ""), reverse=True)[:10]
 
     return render_template("home.html", stats=stats, upcoming=upcoming, course_rows=course_rows[:4],
                            donut_items=donut_items, donut_total=donut_total, star=star, exams=exams,
@@ -2059,7 +2174,7 @@ def dashboard():
             c for c in institution_filter(COURSES)
             if str(c.get("status") or "Active").strip().lower() == "active" and str(c.get("id") or "") not in {str(x) for x in enrolled_ids}
         ]
-    recent_announcements = sorted(institution_filter(ANNOUNCEMENTS) if role=="admin" else (trainer_scope()["announcements"] if role=="trainer" else [a for a in institution_filter(ANNOUNCEMENTS) if a.get("audience") in {"All","Students"}]), key=lambda a:a["date"], reverse=True)[:4]
+    recent_announcements = sorted(institution_filter(ANNOUNCEMENTS) if role=="admin" else (trainer_scope()["announcements"] if role=="trainer" else [a for a in institution_filter(ANNOUNCEMENTS) if a.get("audience") in {"All","Students"}]), key=lambda a:str(a.get("date") or ""), reverse=True)[:10]
     upcoming_sessions=[x for x in scoped["sessions"] if x.get("status", "Scheduled")=="Scheduled"][:5]
     gami = None; course_progress = []
     if role == "student" and student:
@@ -2876,6 +2991,22 @@ def coerce_types(payload):
     return clean
 
 
+def _student_course_batches(raw, course_ids, fallback_batch):
+    """Map every selected course to a batch that belongs to that same course."""
+    raw = raw if isinstance(raw, dict) else {}
+    result = {}
+    for index, cid in enumerate(course_ids):
+        bid = raw.get(str(cid), raw.get(cid))
+        if bid in (None, "") and index == 0:
+            bid = fallback_batch
+        batch = next((b for b in institution_filter(BATCHES)
+                      if _id_equal(b.get("id"), bid) and _id_equal(b.get("course_id"), cid)), None) if bid not in (None, "") else None
+        if not batch:
+            return None, "Choose a batch that belongs to the course: %s." % course_name(cid)
+        result[cid] = int(batch.get("id"))
+    return result, None
+
+
 def _to_ampm_time(clock, ampm):
     """Convert an HTML time input and AM/PM choice to a readable 12-hour time."""
     try:
@@ -2951,6 +3082,8 @@ def api_collection(entity):
     payload["institution_id"] = current_institution_id()
     if entity == "payments" and payload.get("status") == "Pending":
         payload["status"] = "Failed"
+    if entity == "announcements" and payload.get("link") and not _valid_external_url(payload.get("link")):
+        return jsonify({"error": "The link must start with http:// or https://"}), 400
     if entity == "batches":
         # New batches always start with zero enrolled students; enrollment increments this count.
         payload["enrolled"] = 0
@@ -3081,23 +3214,22 @@ def api_collection(entity):
             if any(_id_equal(c.get("id"), cid) for c in institution_filter(COURSES)) and cid not in course_ids:
                 course_ids.append(cid)
         payload["course_ids"] = course_ids
-        batch_value = payload.get("batch_id")
-        try: batch_value = int(batch_value) if batch_value not in (None, "") else None
-        except (TypeError, ValueError): batch_value = None
-        payload["batch_id"] = batch_value
         if not course_ids:
             return jsonify({"error":"Select at least one valid course."}),400
-        selected_batch = next((b for b in institution_filter(BATCHES) if _id_equal(b.get("id"), batch_value)), None)
-        if not selected_batch or not _id_equal(selected_batch.get("course_id"), course_ids[0]):
-            return jsonify({"error":"Choose a batch that belongs to the selected course."}),400
+        course_batches, batch_error = _student_course_batches(payload.pop("course_batches", None), course_ids, payload.get("batch_id"))
+        if batch_error:
+            return jsonify({"error": batch_error}), 400
+        payload["course_id"] = course_ids[0]
+        payload["batch_id"] = course_batches[course_ids[0]]
         enrollment_date = str(payload.get("enrollment_date") or datetime.now().strftime("%Y-%m-%d"))[:10]
-        payload["enrollments"] = [{"course_id": cid, "batch_id": batch_value, "status": "Active", "enrollment_date": enrollment_date} for cid in course_ids]
+        payload["enrollments"] = [{"course_id": cid, "batch_id": course_batches[cid], "status": "Active", "enrollment_date": enrollment_date} for cid in course_ids]
         # Guardian details are captured from the student record and mirrored into the guardian table.
         gid = payload.get("guardian_id")
         guardian_fields = {k: payload.get(k, "") for k in ("guardian_name","guardian_relation","guardian_phone","guardian_address")}
         if guardian_fields["guardian_name"]:
             guardian = next((g for g in GUARDIANS if g.get("student_id")==payload["id"]), None)
             if guardian:
+                gid = guardian.get("id")
                 guardian.update({"name":guardian_fields["guardian_name"],"relation":guardian_fields["guardian_relation"] or "Guardian","phone":guardian_fields["guardian_phone"],"address":guardian_fields["guardian_address"]})
             else:
                 gid=next_id(GUARDIANS); guardian={"id":gid,"name":guardian_fields["guardian_name"],"relation":guardian_fields["guardian_relation"] or "Guardian","phone":guardian_fields["guardian_phone"],"student_id":payload["id"],"address":guardian_fields["guardian_address"],"institution_id":current_institution_id()}; GUARDIANS.append(guardian)
@@ -3196,6 +3328,8 @@ def api_item(entity, item_id):
                 return jsonify({"error":"Duration must be a whole number of weeks, e.g. 6 Weeks."}),400
             payload["duration"] = str(int(re.match(r"[1-9][0-9]*", duration).group())) + " Weeks"
         if entity == "payments" and payload.get("status") == "Pending": payload["status"] = "Failed"
+        if entity == "announcements" and payload.get("link") and not _valid_external_url(payload.get("link")):
+            return jsonify({"error": "The link must start with http:// or https://"}), 400
         if entity == "assessments":
             payload["deadline"] = payload.get("deadline") or payload.get("date", item.get("date", ""))
             payload["questions"] = parse_assessment_questions(payload.pop("questions_text", None) or payload.get("questions", item.get("questions", [])))
@@ -3210,17 +3344,16 @@ def api_item(entity, item_id):
                 except (TypeError, ValueError): continue
                 if any(_id_equal(c.get("id"), cid) for c in institution_filter(COURSES)) and cid not in normalized_course_ids:
                     normalized_course_ids.append(cid)
-            batch_value = payload.get("batch_id", item.get("batch_id"))
-            try: batch_value = int(batch_value) if batch_value not in (None, "") else None
-            except (TypeError, ValueError): batch_value = None
-            selected_batch = next((b for b in institution_filter(BATCHES) if _id_equal(b.get("id"), batch_value)), None)
-            if not normalized_course_ids or not selected_batch or not _id_equal(selected_batch.get("course_id"), normalized_course_ids[0]):
-                return jsonify({"error":"Choose a batch that belongs to the selected course."}),400
+            if not normalized_course_ids:
+                return jsonify({"error":"Select at least one valid course."}),400
+            course_batches, batch_error = _student_course_batches(payload.pop("course_batches", None), normalized_course_ids, payload.get("batch_id", item.get("batch_id")))
+            if batch_error:
+                return jsonify({"error": batch_error}), 400
             payload["course_ids"] = normalized_course_ids
             payload["course_id"] = normalized_course_ids[0]
-            payload["batch_id"] = batch_value
+            payload["batch_id"] = course_batches[normalized_course_ids[0]]
             enrollment_date = str(payload.get("enrollment_date") or item.get("enrollment_date") or datetime.now().strftime("%Y-%m-%d"))[:10]
-            payload["enrollments"] = [{"course_id": cid, "batch_id": batch_value, "status": "Active", "enrollment_date": enrollment_date} for cid in normalized_course_ids]
+            payload["enrollments"] = [{"course_id": cid, "batch_id": course_batches[cid], "status": "Active", "enrollment_date": enrollment_date} for cid in normalized_course_ids]
             guardian_fields={k:payload.pop(k,"") for k in ("guardian_name","guardian_relation","guardian_phone","guardian_address")}
             if guardian_fields["guardian_name"]:
                 guardian=next((g for g in GUARDIANS if g.get("student_id")==item.get("id")),None)
@@ -3281,6 +3414,12 @@ def api_item(entity, item_id):
                     batch={"id":next_id(BATCHES),"name":batch_name.strip(),"course_id":item.get("id"),"trainer_id":batch_fields["trainer_id"],"start_date":batch_fields["start_date"] or "","end_date":batch_fields["end_date"] or "","timing":batch_fields["timing"] or "","capacity":batch_fields["capacity"] or 0,"enrolled":0,"status":batch_fields["status"] or "Upcoming","institution_id":current_institution_id()}; BATCHES.append(batch)
                 save_entity("batches",BATCHES)
         item.update(payload); save_entity(entity, items)
+        if entity == "students":
+            for enrollment in item.get("enrollments", []):
+                try:
+                    save_enrollment_record(current_institution_id(), item["id"], enrollment["course_id"], enrollment.get("batch_id"), status="Active", enrolled_at=enrollment.get("enrollment_date"))
+                except Exception:
+                    app.logger.exception("Could not persist enrollment for student %s", item.get("id"))
         return jsonify({"message": "Updated successfully", "item": item})
 
     if request.method == "DELETE":
@@ -3875,54 +4014,84 @@ def recordings_page():
 # REPORT EXPORT  (PDF via reportlab, Excel via openpyxl)
 # ---------------------------------------------------------------------------
 
+def _row(item, *keys):
+    return [item.get(k, "") if item.get(k) is not None else "" for k in keys]
+
+
+def _mark_row(m):
+    a = assessment_by_id(m.get("assessment_id"))
+    return [a.get("title", "") if a else "", student_name(m.get("student_id")), course_name(a.get("course_id")) if a else "",
+            m.get("marks", ""), m.get("max_marks") or (a.get("max_marks", "") if a else "")]
+
+
+def _mapping_report_rows():
+    rows = []
+    for entry in course_mapping():
+        c = entry["course"]
+        for b in entry["batches"]:
+            batch = b["batch"]
+            dates = "%s to %s" % (batch.get("start_date", ""), batch.get("end_date", ""))
+            for st in b["students"] or [None]:
+                rows.append([c.get("name", ""), batch.get("name", ""), dates, b["trainer"],
+                             st.get("name", "") if st else "—", st.get("email", "") if st else ""])
+        for st in entry["unassigned"]:
+            rows.append([c.get("name", ""), "No batch", "", "—", st.get("name", ""), st.get("email", "")])
+        if not entry["batches"] and not entry["unassigned"]:
+            rows.append([c.get("name", ""), "No batch", "", "—", "—", ""])
+    return rows
+
+
 REPORT_CONFIG = {
     "students": {
         "title": "Student Report",
         "headers": ["ID", "Name", "Email", "Phone", "Course", "Batch", "Status"],
-        "rows": lambda: [[s["id"], s["name"], s["email"], s["phone"], course_name(s["course_id"]),
-                           batch_name(s["batch_id"]), s["status"]] for s in institution_filter(STUDENTS)],
+        "rows": lambda: [_row(s, "id", "name", "email", "phone") + [", ".join(student_course_names(s)) or course_name(s.get("course_id")),
+                           batch_name(s.get("batch_id")), s.get("status", "")] for s in institution_filter(STUDENTS)],
     },
     "courses": {
         "title": "Course Report",
         "headers": ["ID", "Name", "Code", "Category", "Duration", "Fee (INR)", "Status"],
-        "rows": lambda: [[c["id"], c["name"], c["code"], c["category"], c["duration"], c["fee"], c["status"]]
-                          for c in institution_filter(COURSES)],
+        "rows": lambda: [_row(c, "id", "name", "code", "category", "duration", "fee", "status") for c in institution_filter(COURSES)],
     },
     "trainers": {
         "title": "Trainer Report",
         "headers": ["ID", "Name", "Email", "Phone", "Specialization", "Experience (Yrs)", "Status"],
-        "rows": lambda: [[t["id"], t["name"], t["email"], t["phone"], t["specialization"], t["experience"], t["status"]]
-                          for t in institution_filter(TRAINERS)],
+        "rows": lambda: [_row(t, "id", "name", "email", "phone", "specialization", "experience", "status") for t in institution_filter(TRAINERS)],
     },
     "batches": {
         "title": "Batch Report",
         "headers": ["ID", "Name", "Course", "Trainer", "Start Date", "End Date", "Status", "Enrolled/Capacity"],
-        "rows": lambda: [[b["id"], b["name"], course_name(b["course_id"]), trainer_name(b["trainer_id"]),
-                           b["start_date"], b["end_date"], b["status"], str(b["enrolled"]) + "/" + str(b["capacity"])]
-                          for b in institution_filter(BATCHES)],
+        "rows": lambda: [[b.get("id", ""), b.get("name", ""), course_name(b.get("course_id")), trainer_name(b.get("trainer_id")),
+                           b.get("start_date", ""), b.get("end_date", ""), b.get("status", ""),
+                           "%s/%s" % (b.get("enrolled", 0) or 0, b.get("capacity", 0) or 0)] for b in institution_filter(BATCHES)],
     },
     "attendance": {
         "title": "Attendance Report",
         "headers": ["ID", "Student", "Batch", "Date", "Status"],
-        "rows": lambda: [[a["id"], student_name(a["student_id"]), batch_name(a["batch_id"]), a["date"], a["status"]]
+        "rows": lambda: [[a.get("id", ""), student_name(a.get("student_id")), batch_name(a.get("batch_id")), a.get("date", ""), a.get("status", "")]
                           for a in institution_filter(ATTENDANCE)],
     },
     "assessments": {
         "title": "Assessment Report",
         "headers": ["ID", "Title", "Type", "Course", "Batch", "Date", "Max Marks", "Status"],
-        "rows": lambda: [[a["id"], a["title"], a["type"], course_name(a["course_id"]), batch_name(a["batch_id"]),
-                           a["date"], a["max_marks"], a["status"]] for a in institution_filter(ASSESSMENTS)],
+        "rows": lambda: [[a.get("id", ""), a.get("title", ""), a.get("type", ""), course_name(a.get("course_id")), batch_name(a.get("batch_id")),
+                           a.get("date", ""), a.get("max_marks", ""), a.get("status", "")] for a in institution_filter(ASSESSMENTS)],
     },
     "assessment_marks": {
         "title": "Assessment Marks Report",
         "headers": ["Assessment", "Student", "Course", "Marks", "Max Marks"],
-        "rows": lambda: [[assessment_by_id(m["assessment_id"])["title"] if assessment_by_id(m["assessment_id"]) else "", student_name(m["student_id"]), course_name(assessment_by_id(m["assessment_id"])["course_id"]) if assessment_by_id(m["assessment_id"]) else "", m["marks"], m.get("max_marks") or (assessment_by_id(m["assessment_id"]).get("max_marks") if assessment_by_id(m["assessment_id"]) else "")] for m in automatically_calculated_assessment_marks()],
+        "rows": lambda: [_mark_row(m) for m in automatically_calculated_assessment_marks()],
     },
     "payments": {
         "title": "Payment Report",
         "headers": ["ID", "Invoice No", "Student", "Amount (INR)", "Date", "Method", "Status"],
-        "rows": lambda: [[p["id"], p["invoice_no"], student_name(p["student_id"]), p["amount"], p["date"],
-                           p["method"], p["status"]] for p in institution_filter(PAYMENTS)],
+        "rows": lambda: [[p.get("id", ""), p.get("invoice_no", ""), student_name(p.get("student_id")), p.get("amount", ""), p.get("date", ""),
+                           p.get("method", ""), p.get("status", "")] for p in institution_filter(PAYMENTS)],
+    },
+    "mapping": {
+        "title": "Course Batch Trainer Student Mapping",
+        "headers": ["Course", "Batch", "Batch Dates", "Trainer", "Student", "Student Email"],
+        "rows": _mapping_report_rows,
     },
 }
 
@@ -3943,7 +4112,7 @@ def export_report(report_type, fmt):
 
     # Payment reports are restricted to institute admins; trainers must not
     # access payment ledgers through a manually entered export URL either.
-    if report_type == "payments" and role == "trainer":
+    if report_type in {"payments", "mapping"} and role == "trainer":
         abort(403)
 
     try:
@@ -3984,7 +4153,7 @@ def export_report(report_type, fmt):
             rows = config["rows"]()
             if role == "trainer" and report_type == "assessment_marks":
                 allowed_assessment_ids = {str(a.get("id")) for a in trainer_scope().get("assessments", [])}
-                rows = [[assessment_by_id(m["assessment_id"])["title"] if assessment_by_id(m["assessment_id"]) else "", student_name(m["student_id"]), course_name(assessment_by_id(m["assessment_id"])["course_id"]) if assessment_by_id(m["assessment_id"]) else "", m["marks"], m.get("max_marks") or (assessment_by_id(m["assessment_id"]).get("max_marks") if assessment_by_id(m["assessment_id"]) else "")] for m in automatically_calculated_assessment_marks() if str(m.get("assessment_id")) in allowed_assessment_ids]
+                rows = [_mark_row(m) for m in automatically_calculated_assessment_marks() if str(m.get("assessment_id")) in allowed_assessment_ids]
             title = config["title"]
 
         if fmt == "excel":
@@ -4021,8 +4190,11 @@ def export_excel(title, headers, rows):
         cell.fill = PatternFill("solid", fgColor="1E40AF")
         cell.alignment = Alignment(horizontal="center")
 
+    from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
     for r, row in enumerate(rows, start=header_row + 1):
         for c, val in enumerate(row, start=1):
+            if not isinstance(val, (int, float)) or isinstance(val, bool):
+                val = ILLEGAL_CHARACTERS_RE.sub("", "" if val is None else str(val))
             ws.cell(row=r, column=c, value=val)
 
     for idx, h in enumerate(headers, start=1):
@@ -4053,13 +4225,16 @@ def export_pdf(title, headers, rows):
     sub_style = ParagraphStyle("Sub", parent=styles["Normal"], textColor=colors.HexColor("#64748B"), fontSize=9)
 
     elements = [
-        Paragraph("My Institute LMS &mdash; " + title, title_style),
+        Paragraph(_xml_escape_title(current_institution_name()) + " &mdash; " + _xml_escape_title(title), title_style),
         Paragraph("Generated: " + datetime.now().strftime("%d-%b-%Y %H:%M"), sub_style),
         Spacer(1, 14),
     ]
 
-    table_data = [headers] + [[str(v) for v in row] for row in rows]
-    table = Table(table_data, repeatRows=1)
+    cell_style = ParagraphStyle("Cell", parent=styles["Normal"], fontSize=8.5, leading=10)
+    from xml.sax.saxutils import escape as _xml_escape
+    table_data = [headers] + [[Paragraph(_xml_escape("" if v is None else str(v)), cell_style) for v in row] for row in rows]
+    available = landscape(A4)[0] - 3 * cm
+    table = Table(table_data, repeatRows=1, colWidths=[available / max(1, len(headers))] * len(headers))
     table.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1E40AF")),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
@@ -4250,7 +4425,7 @@ def course_detail(course_id):
         if role in {"admin", "trainer"}:
             if it.get("kind") == "Video" and it.get("video_filename"):
                 row["url"] = url_for("course_video", lesson_id=it.get("id"))
-            elif it.get("kind") == "Document" and it.get("document_filename"):
+            elif it.get("kind") == "Document" and (it.get("document_filename") or it.get("external_url")):
                 row["url"] = url_for("course_material", lesson_id=it.get("id"))
         rows.append(row)
         previous_done = done if enrolled else previous_done
@@ -4283,6 +4458,9 @@ def create_course_lesson():
     if role == "trainer" and course_id not in {_payment_int(c.get("id"), -1) for c in trainer_scope().get("courses", [])}:
         return "Access denied: this course is not assigned to you", 403
     kind = request.form.get("kind", "Video")
+    is_link = kind == "Link"
+    if is_link:
+        kind = "Document"
     title = request.form.get("title", "").strip()
     description = request.form.get("description", "").strip()
     if kind not in {"Video", "Document", "Assessment"} or not title or not course_id:
@@ -4314,23 +4492,19 @@ def create_course_lesson():
         uploaded.save(os.path.join(folder, filename))
         record["video_filename"] = filename
         record["video_url"] = url_for("course_video", lesson_id=record["id"])
+    elif is_link:
+        link = _valid_external_url(request.form.get("external_url"))
+        if not link:
+            flash("Enter a valid web link starting with http:// or https://.", "error")
+            return redirect(url_for("course_content_page"))
+        record["external_url"] = link
     elif kind == "Document":
-        uploaded = request.files.get("document_file")
-        if not uploaded or not uploaded.filename:
-            flash("Upload a PDF or PowerPoint file for this content.", "error")
+        saved, original, error = _save_lesson_document(request.files.get("document_file"), course_id, record["id"])
+        if error:
+            flash(error, "error")
             return redirect(url_for("course_content_page"))
-        from werkzeug.utils import secure_filename
-        filename = secure_filename(uploaded.filename)
-        ext = os.path.splitext(filename)[1].lower()
-        if ext not in {".pdf", ".ppt", ".pptx"}:
-            flash("Only PDF, PPT, and PPTX files are supported.", "error")
-            return redirect(url_for("course_content_page"))
-        folder = os.path.join(app.root_path, "static", "course_materials")
-        os.makedirs(folder, exist_ok=True)
-        filename = f"{course_id}_{record['id']}_{filename}"
-        uploaded.save(os.path.join(folder, filename))
-        record["document_filename"] = filename
-        record["document_original_name"] = secure_filename(uploaded.filename)
+        record["document_filename"] = saved
+        record["document_original_name"] = original
     else:
         assessment_id = int(request.form.get("assessment_id") or 0)
         assessment = next((a for a in institution_filter(ASSESSMENTS) if int(a.get("id") or 0) == assessment_id and int(a.get("course_id") or 0) == course_id), None)
@@ -4342,6 +4516,31 @@ def create_course_lesson():
     save_entity("course_lessons", COURSE_LESSONS)
     flash("Course lesson added. Students unlock lessons in the order set.", "success")
     return redirect(url_for("course_content_page"))
+
+
+LESSON_DOCUMENT_EXTS = {".pdf", ".ppt", ".pptx", ".doc", ".docx", ".xls", ".xlsx", ".csv", ".txt", ".rtf",
+                        ".odt", ".odp", ".ods", ".epub", ".zip", ".png", ".jpg", ".jpeg", ".gif", ".webp",
+                        ".mp3", ".wav", ".m4a"}
+
+
+def _valid_external_url(value):
+    value = str(value or "").strip()
+    return value if re.match(r"^https?://[^\s]+$", value, re.I) else ""
+
+
+def _save_lesson_document(uploaded, course_id, lesson_id):
+    """Save a non-video course file. Returns (stored_name, original_name, error)."""
+    if not uploaded or not uploaded.filename:
+        return None, None, "Upload a file for this content (PDF, Word, Excel, PowerPoint, text, image, audio or ZIP)."
+    from werkzeug.utils import secure_filename
+    safe = secure_filename(uploaded.filename)
+    if os.path.splitext(safe)[1].lower() not in LESSON_DOCUMENT_EXTS:
+        return None, None, "Unsupported file type. Allowed: PDF, Word, Excel, PowerPoint, CSV, TXT, images, audio, EPUB or ZIP."
+    folder = os.path.join(app.root_path, "static", "course_materials")
+    os.makedirs(folder, exist_ok=True)
+    stored = f"{course_id}_{lesson_id}_{safe}"
+    uploaded.save(os.path.join(folder, stored))
+    return stored, safe, None
 
 
 def _managed_course_lesson(lesson_id):
@@ -4372,6 +4571,9 @@ def edit_course_lesson(lesson_id):
         title = request.form.get("title", "").strip()
         description = request.form.get("description", "").strip()
         kind = request.form.get("kind", "Video")
+        is_link = kind == "Link"
+        if is_link:
+            kind = "Document"
         course_id = int(request.form.get("course_id") or 0)
         course = next((c for c in courses if int(c.get("id") or 0) == course_id), None)
         if not title or kind not in {"Video", "Document", "Assessment"} or not course:
@@ -4401,25 +4603,27 @@ def edit_course_lesson(lesson_id):
             else:
                 flash("This video lesson has no uploaded video file. Upload a video file; video links are not accepted.", "error")
                 return redirect(url_for("edit_course_lesson", lesson_id=lesson_id))
+        elif is_link:
+            link = _valid_external_url(request.form.get("external_url"))
+            if not link:
+                flash("Enter a valid web link starting with http:// or https://.", "error")
+                return redirect(url_for("edit_course_lesson", lesson_id=lesson_id))
+            lesson["external_url"] = link
+            lesson.pop("document_filename", None)
         elif kind == "Document":
             uploaded = request.files.get("document_file")
-            old_doc = lesson.get("document_filename")
-            new_doc = old_doc
+            new_doc = lesson.get("document_filename")
             if uploaded and uploaded.filename:
-                from werkzeug.utils import secure_filename
-                safe = secure_filename(uploaded.filename)
-                if os.path.splitext(safe)[1].lower() not in {".pdf", ".ppt", ".pptx"}:
-                    flash("Only PDF, PPT, and PPTX files are supported.", "error")
+                new_doc, original, error = _save_lesson_document(uploaded, course_id, lesson_id)
+                if error:
+                    flash(error, "error")
                     return redirect(url_for("edit_course_lesson", lesson_id=lesson_id))
-                folder = os.path.join(app.root_path, "static", "course_materials")
-                os.makedirs(folder, exist_ok=True)
-                new_doc = f"{course_id}_{lesson_id}_{safe}"
-                uploaded.save(os.path.join(folder, new_doc))
-                lesson["document_original_name"] = safe
+                lesson["document_original_name"] = original
             if not new_doc:
-                flash("Upload a PDF or PowerPoint file for this content.", "error")
+                flash("Upload a file for this content (PDF, Word, Excel, PowerPoint, text, image, audio or ZIP).", "error")
                 return redirect(url_for("edit_course_lesson", lesson_id=lesson_id))
             lesson["document_filename"] = new_doc
+            lesson.pop("external_url", None)
         else:
             assessment_id = int(request.form.get("assessment_id") or 0)
             assessment = next((a for a in assessments if int(a.get("id") or 0) == assessment_id and int(a.get("course_id") or 0) == course_id), None)
@@ -4435,7 +4639,8 @@ def edit_course_lesson(lesson_id):
             lesson.pop("video_filename", None)
         if kind != "Document":
             lesson.pop("document_filename", None)
-        elif lesson.get("document_filename"):
+            lesson.pop("external_url", None)
+        elif lesson.get("document_filename") or lesson.get("external_url"):
             lesson["document_url"] = url_for("course_material", lesson_id=lesson_id)
         if old_video and old_video != new_video:
             old_path = os.path.join(app.root_path, "static", "course_videos", old_video)
@@ -4541,7 +4746,7 @@ def course_lesson_watch(lesson_id):
 @login_required
 def course_material(lesson_id):
     lesson = next((x for x in institution_filter(COURSE_LESSONS) if int(x.get("id") or 0) == lesson_id), None)
-    if not lesson or lesson.get("kind") != "Document" or not lesson.get("document_filename"):
+    if not lesson or lesson.get("kind") != "Document" or not (lesson.get("document_filename") or lesson.get("external_url")):
         return "Course material not found", 404
     role = session.get("user_role")
     if role == "student":
@@ -4557,11 +4762,15 @@ def course_material(lesson_id):
     elif role == "trainer":
         if int(lesson.get("course_id") or 0) not in {int(c.get("id") or 0) for c in trainer_scope().get("courses", [])}: return "Access denied", 403
     elif role != "admin": return "Access denied", 403
+    if lesson.get("external_url") and not lesson.get("document_filename"):
+        return redirect(lesson["external_url"])
     path = os.path.join(app.root_path, "static", "course_materials", lesson["document_filename"])
     if not os.path.isfile(path): return "Course material file not found", 404
+    import mimetypes
     ext = os.path.splitext(path)[1].lower()
-    mime = {".pdf":"application/pdf", ".ppt":"application/vnd.ms-powerpoint", ".pptx":"application/vnd.openxmlformats-officedocument.presentationml.presentation"}.get(ext, "application/octet-stream")
-    return send_file(path, mimetype=mime, as_attachment=False, download_name=lesson.get("document_original_name") or os.path.basename(path))
+    mime = mimetypes.guess_type(path)[0] or "application/octet-stream"
+    inline = ext in {".pdf", ".txt", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".mp3", ".wav", ".m4a"}
+    return send_file(path, mimetype=mime, as_attachment=not inline, download_name=lesson.get("document_original_name") or os.path.basename(path))
 
 @app.route("/api/course-lessons/<int:lesson_id>/complete", methods=["POST"])
 @login_required
@@ -4602,92 +4811,163 @@ def certificates_page():
                                students=scoped.get("students", []), courses=scoped.get("courses", []), student_view=False)
     if role != "admin":
         return redirect(url_for("dashboard"))
-    return render_template("certificates.html", certificates=institution_filter(CERTIFICATES), students=institution_filter(STUDENTS), courses=institution_filter(COURSES), student_view=False)
+    return render_template("certificates.html", certificates=institution_filter(CERTIFICATES), students=institution_filter(STUDENTS),
+                           courses=institution_filter(COURSES), student_view=False, branding=institution_branding(),
+                           grade_scale=GRADE_SCALE_TEXT)
+
+
+GRADE_SCALE_TEXT = "A: 85% and above · B: 70–84% · C: 55–69% · D: below 55%"
+
+def grade_for_score(pct):
+    if pct is None:
+        return ""
+    pct = float(pct)
+    return "A" if pct >= 85 else "B" if pct >= 70 else "C" if pct >= 55 else "D"
+
+
+def student_course_batch(student, course_id, enrollments=None):
+    batches = institution_filter(BATCHES)
+    for e in (enrollments if enrollments is not None else student_enrollments(student)):
+        if _id_equal(e.get("course_id"), course_id) and e.get("batch_id") not in (None, ""):
+            b = next((x for x in batches if _id_equal(x.get("id"), e.get("batch_id")) and _id_equal(x.get("course_id"), course_id)), None)
+            if b:
+                return b
+    if student.get("batch_id") not in (None, ""):
+        return next((x for x in batches if _id_equal(x.get("id"), student.get("batch_id")) and _id_equal(x.get("course_id"), course_id)), None)
+    return None
+
+
+def student_course_score(student_id, course_id):
+    course_assessments = {str(a.get("id")): a for a in institution_filter(ASSESSMENTS) if _id_equal(a.get("course_id"), course_id)}
+    got = total = 0.0
+    for m in automatically_calculated_assessment_marks():
+        a = course_assessments.get(str(m.get("assessment_id")))
+        if not a or not _id_equal(m.get("student_id"), student_id):
+            continue
+        try:
+            got += float(m.get("marks") or 0)
+            total += float(m.get("max_marks") or a.get("max_marks") or 0)
+        except (TypeError, ValueError):
+            continue
+    return round(got * 100 / total, 1) if total > 0 else None
+
+
+def course_certificate_rows(course):
+    """Every student enrolled in a course with batch dates, completion, score and auto grade."""
+    today = lms_now().date().isoformat()
+    rows = []
+    for st in institution_filter(STUDENTS):
+        if not any(_id_equal(course.get("id"), cid) for cid in student_course_ids(st)):
+            continue
+        batch = student_course_batch(st, course.get("id"))
+        progress = student_course_progress(st, course)
+        batch_done = bool(batch) and (str(batch.get("status") or "").lower() == "completed"
+                                      or (bool(batch.get("end_date")) and str(batch.get("end_date")) < today))
+        score = student_course_score(st.get("id"), course.get("id"))
+        cert = next((c for c in institution_filter(CERTIFICATES) if _id_equal(c.get("student_id"), st.get("id")) and _id_equal(c.get("course_id"), course.get("id"))), None)
+        rows.append({"student_id": st.get("id"), "name": st.get("name") or "Student", "email": st.get("email") or "",
+                     "batch": batch.get("name") if batch else "", "start_date": batch.get("start_date", "") if batch else "",
+                     "end_date": batch.get("end_date", "") if batch else "", "progress": progress["percent"],
+                     "completed": (progress["total"] > 0 and progress["percent"] >= 100) or batch_done,
+                     "score": score, "auto_grade": grade_for_score(score), "has_certificate": bool(cert)})
+    rows.sort(key=lambda r: (not r["completed"], str(r["name"])))
+    return rows
+
+
+@app.route("/api/certificates/course/<int:course_id>/students")
+@login_required
+def certificate_course_students(course_id):
+    if session.get("user_role") != "admin":
+        return jsonify({"error": "Only institute admins can generate certificates."}), 403
+    course = next((c for c in institution_filter(COURSES) if _id_equal(c.get("id"), course_id)), None)
+    if not course:
+        return jsonify({"error": "Course not found"}), 404
+    return jsonify({"course": {"id": course.get("id"), "name": course.get("name"), "duration": course.get("duration", "")},
+                    "students": course_certificate_rows(course)})
+
+
+@app.route("/institution/branding", methods=["POST"])
+@login_required
+def update_institution_branding():
+    if session.get("user_role") != "admin":
+        flash("Only institute admins can change the institute logo.", "error")
+        return redirect(url_for("dashboard"))
+    updates = {}
+    for kind in ("logo", "signature"):
+        uploaded = request.files.get("institution_" + kind)
+        if uploaded and uploaded.filename:
+            url, error = save_institution_asset(current_institution_id(), uploaded, kind)
+            if error:
+                flash(error, "error")
+                return redirect(url_for("certificates_page"))
+            updates[kind + "_url"] = url
+    if not updates:
+        flash("Choose a logo or signature file to upload.", "error")
+        return redirect(url_for("certificates_page"))
+    con = get_db()
+    try:
+        for column, url in updates.items():
+            con.execute("UPDATE institutions SET %s=%%s WHERE id=%%s" % column, (url, current_institution_id()))
+        con.commit()
+    finally:
+        con.close()
+    flash("Institute branding updated. It is printed automatically on every certificate.", "success")
+    return redirect(url_for("certificates_page"))
 
 @app.route("/certificates/issue", methods=["POST"])
 @login_required
 def issue_certificate():
-    role = session.get("user_role")
-    if role != "admin":
+    if session.get("user_role") != "admin":
         flash("Only institute admins can generate certificates.", "error")
         return redirect(url_for("certificates_page"))
-    try:
-        student_id = int(request.form.get("student_id") or 0)
-        course_id = int(request.form.get("course_id") or 0)
-    except (TypeError, ValueError):
-        flash("Choose a valid student and course.", "error")
+    course_id = _payment_int(request.form.get("course_id"), 0)
+    course = next((c for c in institution_filter(COURSES) if _id_equal(c.get("id"), course_id)), None)
+    if not course:
+        flash("Choose a valid course.", "error")
         return redirect(url_for("certificates_page"))
-    allowed_students = institution_filter(STUDENTS)
-    allowed_courses = institution_filter(COURSES)
-    if role == "trainer":
-        scoped = trainer_scope()
-        allowed_students = scoped.get("students", [])
-        allowed_courses = scoped.get("courses", [])
-    student = next((st for st in allowed_students if _id_equal(st.get("id"), student_id)), None)
-    course = next((co for co in allowed_courses if _id_equal(co.get("id"), course_id)), None)
-    if not student or not course or not any(_id_equal(course_id, cid) for cid in student_course_ids(student)):
-        flash("Choose a student assigned to you and one of their enrolled courses.", "error")
+    selected = {str(x) for x in request.form.getlist("student_ids")}
+    if not selected:
+        flash("Tick at least one student to generate certificates.", "error")
         return redirect(url_for("certificates_page"))
-    uploaded = request.files.get("certificate_file")
-    file_path = ""
-    if uploaded and uploaded.filename:
-        from werkzeug.utils import secure_filename
-        original_name = uploaded.filename
-        extension = original_name.rsplit(".", 1)[-1].lower() if "." in original_name else ""
-        if extension not in {"pdf", "png", "jpg", "jpeg"}:
-            flash("Upload a PDF, PNG or JPG certificate file.", "error")
-            return redirect(url_for("certificates_page"))
-        uploaded.stream.seek(0, os.SEEK_END)
-        file_size = uploaded.stream.tell()
-        uploaded.stream.seek(0)
-        if file_size > 10 * 1024 * 1024:
-            flash("Certificate file must be 10 MB or smaller.", "error")
-            return redirect(url_for("certificates_page"))
-        safe = secure_filename(original_name)
-        folder = os.path.join(app.root_path, "static", "certificates")
-        os.makedirs(folder, exist_ok=True)
-        safe = str(student_id) + "_" + str(course_id) + "_" + safe
-        uploaded.save(os.path.join(folder, safe))
-        file_path = url_for("static", filename="certificates/" + safe)
-    # Optional logo/signature assets are saved with the certificate and reused on regeneration.
-    from werkzeug.utils import secure_filename
-    asset_urls = {}
-    asset_folder = os.path.join(app.root_path, "static", "certificates", "assets")
-    os.makedirs(asset_folder, exist_ok=True)
-    for field, key in (("certificate_logo", "certificate_logo"), ("certificate_signature", "certificate_signature")):
-        asset = request.files.get(field)
-        if not asset or not asset.filename:
+    template = request.form.get("template", "classic")
+    template = template if template in {"classic", "modern", "elegant"} else "classic"
+    start_override = request.form.get("start_date", "").strip()[:10]
+    end_override = request.form.get("end_date", "").strip()[:10]
+    iid = current_institution_id()
+    issued, no_grade = 0, []
+    for row in course_certificate_rows(course):
+        sid = str(row["student_id"])
+        if sid not in selected:
             continue
-        ext = asset.filename.rsplit(".", 1)[-1].lower() if "." in asset.filename else ""
-        if ext not in {"png", "jpg", "jpeg", "svg"}:
-            flash("Logo and signature must be PNG, JPG or SVG files.", "error")
-            return redirect(url_for("certificates_page"))
-        asset.stream.seek(0, os.SEEK_END)
-        size = asset.stream.tell()
-        asset.stream.seek(0)
-        if size > 5 * 1024 * 1024:
-            flash("Logo and signature files must be 5 MB or smaller.", "error")
-            return redirect(url_for("certificates_page"))
-        safe_name = secure_filename(f"{student_id}_{course_id}_{key}.{ext}")
-        asset.save(os.path.join(asset_folder, safe_name))
-        asset_urls[key] = url_for("static", filename="certificates/assets/" + safe_name)
-
-    old = next((c for c in CERTIFICATES if c.get("student_id") == student_id and c.get("course_id") == course_id
-                and c.get("institution_id", current_institution_id()) == current_institution_id()), None)
-    record = old or {"id": next_id(CERTIFICATES), "institution_id": current_institution_id(),
-                     "student_id": student_id, "course_id": course_id}
-    record.update({"student_name": student.get("name"), "course_name": course.get("name"),
-                   "verified": True, "issued_at": datetime.now().strftime("%Y-%m-%d"),
-                   "duration": course.get("duration", ""), "template": request.form.get("template", "classic"),
-                   "certificate_file": file_path or url_for("download_certificate", certificate_id=record["id"]),
-                   "certificate_number": "EDB-%04d-%04d" % (student_id, course_id),
-                   "verified_by": session.get("user_name", "Institute")})
-    for asset_key, asset_url in asset_urls.items():
-        record[asset_key] = asset_url
-    if not old:
-        CERTIFICATES.append(record)
+        choice = request.form.get("grade_" + sid, "auto").strip().upper()
+        if choice in {"A", "B", "C", "D"}:
+            grade, mode = choice, "manual"
+        else:
+            grade, mode = row["auto_grade"], "auto"
+        if not grade:
+            no_grade.append(row["name"])
+        student_id = int(row["student_id"])
+        old = next((c for c in CERTIFICATES if _id_equal(c.get("student_id"), student_id) and _id_equal(c.get("course_id"), course_id)
+                    and _id_equal(c.get("institution_id", iid), iid)), None)
+        record = old or {"id": next_id(CERTIFICATES), "institution_id": iid, "student_id": student_id, "course_id": course_id}
+        record.update({"student_name": row["name"], "course_name": course.get("name"), "verified": True,
+                       "issued_at": datetime.now().strftime("%Y-%m-%d"), "duration": course.get("duration", ""),
+                       "template": template, "course_start": start_override or row["start_date"],
+                       "course_end": end_override or row["end_date"], "score_pct": row["score"],
+                       "grade": grade, "grade_mode": mode,
+                       "certificate_file": url_for("download_certificate", certificate_id=record["id"]),
+                       "certificate_number": "EDB-%04d-%04d" % (student_id, course_id),
+                       "verified_by": session.get("user_name", "Institute")})
+        if not old:
+            CERTIFICATES.append(record)
+        issued += 1
+    if not issued:
+        flash("None of the selected students are enrolled in this course.", "error")
+        return redirect(url_for("certificates_page"))
     save_entity("certificates", CERTIFICATES)
-    flash("Certificate generated successfully.", "success")
+    flash("%d certificate%s generated for %s." % (issued, "" if issued == 1 else "s", course.get("name")), "success")
+    if no_grade:
+        flash("No assessment score yet for: %s. Their certificate has no grade; pick A–D manually and generate again if needed." % ", ".join(no_grade), "error")
     return redirect(url_for("certificates_page"))
 
 def _certificate_asset_path(asset_url):
@@ -4765,8 +5045,27 @@ def _build_certificate_pdf(cert, disposition="attachment"):
     # Built-in PDF fonts are portable; replace uncommon unsupported glyphs instead of failing the download.
     def portable(value):
         return str(value).encode("latin-1", "replace").decode("latin-1")
+    def nice_date(value):
+        try:
+            return datetime.strptime(str(value)[:10], "%Y-%m-%d").strftime("%d %b %Y")
+        except (TypeError, ValueError):
+            return str(value or "")
     student_name, course_title = portable(student_name), portable(course_title)
-    duration, issued, number = portable(duration), portable(issued), portable(number)
+    duration, number = portable(duration), portable(number)
+    issued = portable(nice_date(issued))
+    branding = institution_branding(cert.get("institution_id"))
+    period_parts = []
+    if cert.get("course_start") and cert.get("course_end"):
+        period_parts.append("Course period: %s to %s" % (nice_date(cert.get("course_start")), nice_date(cert.get("course_end"))))
+    if duration:
+        period_parts.append("Duration: " + duration)
+    period_line = portable("  |  ".join(period_parts))
+    grade_line = ""
+    if cert.get("grade"):
+        grade_line = "Grade: %s" % cert.get("grade")
+        if cert.get("score_pct") is not None:
+            grade_line += "  (Assessment score: %s%%)" % cert.get("score_pct")
+    grade_line = portable(grade_line)
 
     buf = io.BytesIO()
     page_size = landscape(A4)
@@ -4788,7 +5087,7 @@ def _build_certificate_pdf(cert, disposition="attachment"):
     pdf.setStrokeColor(accent_c); pdf.setLineWidth(1.5)
     pdf.roundRect(29, 29, width - 58, height - 58, 7, fill=0, stroke=1)
 
-    _draw_certificate_asset(pdf, cert.get("certificate_logo"), width / 2 - 50, height - 105, 100, 46)
+    _draw_certificate_asset(pdf, branding.get("logo_url") or cert.get("certificate_logo"), width / 2 - 50, height - 105, 100, 46)
     pdf.setFillColor(navy_c)
     pdf.setFont("Helvetica-Bold", 23)
     pdf.drawCentredString(width / 2, height - 135, "CERTIFICATE OF COMPLETION")
@@ -4812,12 +5111,17 @@ def _build_certificate_pdf(cert, disposition="attachment"):
     pdf.setFillColor(navy_c); pdf.setFont("Helvetica-Bold", course_size)
     pdf.drawCentredString(width / 2, height - 295, course_title)
     pdf.setFillColor(colors.HexColor("#4B5563")); pdf.setFont("Helvetica", 11)
-    if duration:
-        pdf.drawCentredString(width / 2, height - 324, "Duration: " + duration)
-    pdf.drawCentredString(width / 2, height - 345, "Issued on " + issued)
+    y = height - 324
+    if period_line:
+        pdf.drawCentredString(width / 2, y, period_line); y -= 21
+    if grade_line:
+        pdf.setFillColor(navy_c); pdf.setFont("Helvetica-Bold", 13)
+        pdf.drawCentredString(width / 2, y, grade_line); y -= 21
+        pdf.setFillColor(colors.HexColor("#4B5563")); pdf.setFont("Helvetica", 11)
+    pdf.drawCentredString(width / 2, y, "Issued on " + issued)
 
     # The logo and signature are embedded from the local static directory, not remote URLs.
-    _draw_certificate_asset(pdf, cert.get("certificate_signature"), 125, 65, 125, 45)
+    _draw_certificate_asset(pdf, branding.get("signature_url") or cert.get("certificate_signature"), 125, 65, 125, 45)
     pdf.setStrokeColor(navy_c); pdf.setLineWidth(0.8)
     pdf.line(85, 62, 290, 62)
     pdf.setFillColor(colors.HexColor("#5B6470")); pdf.setFont("Helvetica", 9)
@@ -4825,7 +5129,7 @@ def _build_certificate_pdf(cert, disposition="attachment"):
     pdf.line(width - 290, 62, width - 85, 62)
     pdf.drawCentredString(width - 187.5, 45, "Certificate ID: " + number)
     pdf.setFillColor(accent_c); pdf.setFont("Helvetica-Bold", 8)
-    pdf.drawCentredString(width / 2, 30, "EDUBRIDGE LEARNING INSTITUTE")
+    pdf.drawCentredString(width / 2, 30, portable(str(branding.get("name") or "EduBridge Learning Institute").upper()))
     pdf.showPage(); pdf.save(); buf.seek(0)
     return send_file(buf, mimetype="application/pdf", as_attachment=(disposition == "attachment"),
                      download_name=f"certificate-{cert.get('id', 'student')}.pdf", max_age=0)
@@ -4876,6 +5180,37 @@ def view_certificate(certificate_id):
     return _build_certificate_pdf(cert, "inline")
 
 
+def course_mapping():
+    """Course -> batches -> trainer -> students for the current institute."""
+    batches = institution_filter(BATCHES)
+    batch_by_id = {str(b.get("id")): b for b in batches}
+    members = {}
+    for st in institution_filter(STUDENTS):
+        enrollments = student_enrollments(st)
+        for cid in student_course_ids(st):
+            b = student_course_batch(st, cid, enrollments)
+            members.setdefault((str(cid), str(b.get("id")) if b else ""), []).append(st)
+    out = []
+    for c in institution_filter(COURSES):
+        cid = str(c.get("id"))
+        rows = [{"batch": b, "trainer": trainer_name(b.get("trainer_id")),
+                 "students": sorted(members.get((cid, str(b.get("id"))), []), key=lambda s: str(s.get("name") or ""))}
+                for b in batches if str(b.get("course_id")) == cid and str(b.get("id")) in batch_by_id]
+        unassigned = members.get((cid, ""), [])
+        out.append({"course": c, "batches": rows, "unassigned": unassigned,
+                    "student_count": sum(len(r["students"]) for r in rows) + len(unassigned),
+                    "trainers": sorted({r["trainer"] for r in rows if r["trainer"] and r["trainer"] != "—"})})
+    return out
+
+
+@app.route("/mapping")
+@login_required
+def mapping_page():
+    if session.get("user_role") != "admin":
+        return redirect(url_for("dashboard"))
+    return render_template("mapping.html", mapping=course_mapping())
+
+
 @app.route("/students/<int:student_id>/report")
 @login_required
 def student_report(student_id):
@@ -4897,6 +5232,9 @@ def student_report(student_id):
                            assessments=assessments, attendance=attendance, progress=progress,
                            certificates=certificates, students=institution_filter(STUDENTS),
                            all_courses=institution_filter(COURSES), student_view=False)
+
+
+migrate_materials_to_course_content()
 
 
 if __name__ == "__main__":
