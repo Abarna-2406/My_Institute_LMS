@@ -1,10 +1,7 @@
-# Environment / secrets
-.env
-.venv/
 venv/
+venv_old/
+.env
 __pycache__/
-*.pyc
-
-# Local development
-.vscode/
-.idea/
+*.py[cod]
+instance/
+.pytest_cache/
