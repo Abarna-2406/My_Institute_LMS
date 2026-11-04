@@ -26,26 +26,36 @@
 
 
 <div class="stat-grid">
-  <div class="stat-card">
+  <a class="stat-card" data-testid="reports-students-link" href="{{ url_for('students_page') }}">
     <div class="stat-top"><div class="stat-icon" style="background:var(--blue-600);"><i class="fa-solid fa-user-graduate"></i></div></div>
     <div class="stat-value">{{ students|length }}</div>
-    <div class="stat-label">Students Recorded</div>
-  </div>
-  <div class="stat-card">
+    <div class="stat-label">Students Recorded</div><span class="stat-link">View students →</span>
+  </a>
+  <a class="stat-card" data-testid="reports-courses-link" href="{{ url_for('courses_page') }}">
+    <div class="stat-top"><div class="stat-icon" style="background:#7c3aed;"><i class="fa-solid fa-book-open"></i></div></div>
+    <div class="stat-value">{{ courses|length }}</div>
+    <div class="stat-label">Courses</div><span class="stat-link">View courses →</span>
+  </a>
+  <a class="stat-card" data-testid="reports-batches-link" href="{{ url_for('batches_page') }}">
     <div class="stat-top"><div class="stat-icon" style="background:var(--navy-800);"><i class="fa-solid fa-layer-group"></i></div></div>
     <div class="stat-value">{{ batches|length }}</div>
-    <div class="stat-label">Batches Recorded</div>
-  </div>
-  {% if session.get('user_role') == 'admin' %}<div class="stat-card">
+    <div class="stat-label">Batches Recorded</div><span class="stat-link">View batches →</span>
+  </a>
+  {% if session.get('user_role') == 'admin' %}<a class="stat-card" data-testid="reports-trainers-link" href="{{ url_for('trainers_page') }}">
+    <div class="stat-top"><div class="stat-icon" style="background:#0891b2;"><i class="fa-solid fa-chalkboard-user"></i></div></div>
+    <div class="stat-value">{{ trainers|length }}</div>
+    <div class="stat-label">Trainers</div><span class="stat-link">View trainers →</span>
+  </a>
+  <a class="stat-card" data-testid="reports-payments-link" href="{{ url_for('payments_page') }}">
     <div class="stat-top"><div class="stat-icon" style="background:#16a34a;"><i class="fa-solid fa-wallet"></i></div></div>
     <div class="stat-value">₹{{ '{:,}'.format(payments|selectattr('status','equalto','Paid')|sum(attribute='amount')) }}</div>
-    <div class="stat-label">Total Payments Collected</div>
-  </div>{% endif %}
-  <div class="stat-card">
+    <div class="stat-label">Total Payments Collected</div><span class="stat-link">View payments →</span>
+  </a>{% endif %}
+  <a class="stat-card" data-testid="reports-attendance-link" href="{{ url_for('attendance_page') }}">
     <div class="stat-top"><div class="stat-icon" style="background:#d97706;"><i class="fa-solid fa-clipboard-check"></i></div></div>
     <div class="stat-value">{{ attendance|length }}</div>
-    <div class="stat-label">Attendance Entries</div>
-  </div>
+    <div class="stat-label">Attendance Entries</div><span class="stat-link">View attendance →</span>
+  </a>
 </div>
 
 <div class="card">
@@ -65,6 +75,7 @@
       ] %}
       {% if session.get('user_role') == 'admin' %}
         {% set _ = reports.append(('payments','Payment Report','fa-wallet','Full payment ledger with status and method.')) %}
+        {% set _ = reports.append(('mapping','Course → Batch → Trainer → Student Mapping','fa-sitemap','Who studies in which batch, under which trainer, for every course.')) %}
       {% endif %}
 
       {% for key, title, icon, desc in reports %}
@@ -74,6 +85,8 @@
             <div class="mini-ic"><i class="fa-solid {{ icon }}"></i></div>
           </div>
           <strong style="font-size:15px;color:var(--navy-900);">{{ title }}</strong>
+          {% set view_links = {'students':('students_page','View students'),'courses':('courses_page','View courses'),'trainers':('trainers_page','View trainers'),'batches':('batches_page','View batches'),'attendance':('attendance_page','View attendance'),'assessments':('assessments_page','View assessments'),'payments':('payments_page','View payments'),'mapping':('mapping_page','View mapping')} %}
+          {% if view_links.get(key) and (key != 'mapping' or session.get('user_role') == 'admin') %}<a class="stat-link" data-testid="report-view-{{ key }}" href="{{ url_for(view_links[key][0]) }}">{{ view_links[key][1] }} →</a>{% endif %}
           <p style="color:var(--gray-500);font-size:12.8px;margin:4px 0 14px;">{{ desc }}</p>
           <div class="export-row">
             <a class="btn btn-outline btn-sm" href="{{ url_for('export_report', report_type=key, fmt='pdf') }}">

@@ -86,12 +86,9 @@
             </select>
             <small class="form-help">Hold Ctrl (Windows) / Command (Mac) to select multiple courses.</small>
           </div>
-          <div class="form-group">
-            <label>Batch</label>
-            <select name="batch_id" id="studentBatchId" class="form-control" required disabled>
-              <option value="">Select a course first</option>
-              {% for b in batches %}<option value="{{ b.id }}" data-course="{{ b.course_id }}">{{ b.name }}</option>{% endfor %}
-            </select>
+          <div class="full form-group">
+            <label>Batch for each selected course</label>
+            <div id="studentCourseBatches" data-testid="student-course-batches"></div>
             <small class="form-help" id="studentBatchHelp">Choose a course to see its available batches.</small>
           </div>
           <div class="form-group">
@@ -124,35 +121,39 @@
 {% block scripts %}
 <script>
 var studentEditId = null;
-var studentBatchSelect = document.getElementById('studentBatchId');
-var studentBatchOptions = Array.from(studentBatchSelect.options).filter(function(option){ return option.value !== ''; }).map(function(option){ return {value:option.value, label:option.textContent, course:String(option.dataset.course || '')}; });
-function refreshStudentBatches(preferredBatchId){
-  var courseSelect = document.getElementById('studentCourseIds');
-  var selectedCourses = Array.from(courseSelect.selectedOptions).map(function(option){ return String(option.value); });
-  var primaryCourse = selectedCourses[0] || '';
-  studentBatchSelect.innerHTML = '';
-  var placeholder = document.createElement('option');
-  placeholder.value = '';
-  placeholder.textContent = primaryCourse ? 'Choose a batch' : 'Select a course first';
-  studentBatchSelect.appendChild(placeholder);
-  var matching = studentBatchOptions.filter(function(batch){ return primaryCourse && batch.course === primaryCourse; });
-  matching.forEach(function(batch){
-    var option = document.createElement('option');
-    option.value = batch.value; option.textContent = batch.label; option.dataset.course = batch.course;
-    studentBatchSelect.appendChild(option);
+var studentBatchOptions = ({{ batches|tojson }}).map(function(b){ return {value:String(b.id), label:b.name, course:String(b.course_id || ''), dates:(b.start_date || '') + (b.end_date ? ' to ' + b.end_date : '')}; });
+function refreshStudentBatches(preferred){
+  preferred = preferred || {};
+  var box = document.getElementById('studentCourseBatches');
+  var current = {};
+  box.querySelectorAll('select[data-course]').forEach(function(s){ if(s.value) current[s.dataset.course] = s.value; });
+  var selected = Array.from(document.getElementById('studentCourseIds').selectedOptions).map(function(o){ return {id:String(o.value), name:o.textContent}; });
+  box.innerHTML = '';
+  var missing = 0;
+  selected.forEach(function(course){
+    var matching = studentBatchOptions.filter(function(b){ return b.course === course.id; });
+    var row = document.createElement('div'); row.className = 'course-batch-row';
+    var label = document.createElement('label'); label.textContent = course.name;
+    var sel = document.createElement('select'); sel.className = 'form-control'; sel.required = true; sel.dataset.course = course.id;
+    sel.setAttribute('data-testid', 'student-batch-select-' + course.id);
+    var ph = document.createElement('option'); ph.value = ''; ph.textContent = matching.length ? 'Choose a batch' : 'No batch for this course yet'; sel.appendChild(ph);
+    matching.forEach(function(b){ var o = document.createElement('option'); o.value = b.value; o.textContent = b.label + (b.dates ? ' (' + b.dates + ')' : ''); sel.appendChild(o); });
+    var want = current[course.id] || preferred[course.id];
+    if (want && matching.some(function(b){ return b.value === String(want); })) sel.value = String(want);
+    else if (matching.length === 1) sel.value = matching[0].value;
+    if (!matching.length) { sel.disabled = true; missing++; }
+    row.appendChild(label); row.appendChild(sel); box.appendChild(row);
   });
-  studentBatchSelect.disabled = matching.length === 0;
-  document.getElementById('studentBatchHelp').textContent = !primaryCourse
+  document.getElementById('studentBatchHelp').textContent = !selected.length
     ? 'Choose a course to see its available batches.'
-    : (matching.length ? 'Showing batches for the selected course.' : 'No batches are available for this course yet.');
-  if (preferredBatchId && matching.some(function(batch){ return String(batch.value) === String(preferredBatchId); })) studentBatchSelect.value = String(preferredBatchId);
-  else studentBatchSelect.value = '';
+    : (missing ? 'Some selected courses have no batch yet. Create a batch for them first.' : 'Only the batches of each selected course are shown.');
 }
 document.getElementById('studentCourseIds').addEventListener('change', function(){ refreshStudentBatches(); });
 function openAddStudentModal(){
   studentEditId = null;
   document.getElementById('studentModalTitle').innerText = 'Add Student';
   document.getElementById('studentForm').reset();
+  document.getElementById('studentCourseBatches').innerHTML = '';
   refreshStudentBatches();
   openModal('studentModal');
 }
@@ -167,7 +168,11 @@ function openEditStudentModal(student){
   Array.from(document.getElementById('studentCourseIds').options).forEach(function(opt){
     opt.selected = ids.map(String).indexOf(String(opt.value)) !== -1;
   });
-  refreshStudentBatches(student.batch_id);
+  var preferred = {};
+  (student.enrollments || []).forEach(function(e){ if(e.batch_id) preferred[String(e.course_id)] = String(e.batch_id); });
+  if (ids.length && student.batch_id && !preferred[String(ids[0])]) preferred[String(ids[0])] = String(student.batch_id);
+  document.getElementById('studentCourseBatches').innerHTML = '';
+  refreshStudentBatches(preferred);
   openModal('studentModal');
 }
 document.getElementById('studentForm').addEventListener('submit', function(e){
@@ -178,6 +183,11 @@ document.getElementById('studentForm').addEventListener('submit', function(e){
   payload.course_ids = Array.from(document.getElementById('studentCourseIds').selectedOptions).map(function(o){ return parseInt(o.value); });
   if(!payload.course_ids.length){ showToast('Select at least one course', 'error'); return; }
   payload.course_id = payload.course_ids[0];
+  payload.course_batches = {};
+  var batchMissing = false;
+  document.querySelectorAll('#studentCourseBatches select[data-course]').forEach(function(s){ if(!s.value) batchMissing = true; payload.course_batches[s.dataset.course] = s.value ? parseInt(s.value) : null; });
+  if(batchMissing){ showToast('Choose a batch for every selected course', 'error'); return; }
+  payload.batch_id = payload.course_batches[String(payload.course_id)];
   var url = '/api/data/students' + (studentEditId ? '/' + studentEditId : '');
   fetch(url,{method:studentEditId?'PUT':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)})
     .then(function(res){return res.json().then(function(data){return {status:res.status,data:data};});})
