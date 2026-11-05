@@ -248,28 +248,25 @@ def find_by_id(items, item_id):
 
 
 def _db_student_enrollments(student):
-    """Read normalized enrollments from PostgreSQL as the source of truth.
-
-    Older records may have the enrollment only in the normalized table while
-    the student's JSON payload is stale. Reading both keeps My Courses and
-    dashboard counts correct after migrations or older enrollment flows.
-    """
+    """Read normalized enrollments from PostgreSQL as the source of truth."""
     if not student:
         return []
+
+    con = None
     try:
         con = get_db()
-        # The session is the authoritative tenant context. Older student JSON
-        # records can have institution_id=None or a string value, so never let
-        # a blank/stale payload field hide valid normalized enrollment rows.
+
         try:
             institution_id = int(student.get("institution_id") or current_institution_id())
         except (TypeError, ValueError):
             institution_id = current_institution_id()
+
         try:
             student_id = int(student.get("id"))
         except (TypeError, ValueError):
             app.logger.warning("Cannot load enrollments for student with invalid id: %r", student.get("id"))
             return []
+
         rows = con.execute(
             """SELECT course_id,batch_id,status,enrolled_at
                FROM enrollments
@@ -278,13 +275,11 @@ def _db_student_enrollments(student):
                ORDER BY enrolled_at DESC""",
             (institution_id, student_id)
         ).fetchall()
-        con.close()
+
         normalized = []
         for r in rows:
             if r.get("course_id") is None or str(r.get("status") or "Active").lower() == "cancelled":
                 continue
-            # IDs can arrive as strings from older JSON records; normalize them
-            # before matching courses and batches in Jinja templates.
             try:
                 course_id = int(r.get("course_id"))
             except (TypeError, ValueError):
@@ -293,6 +288,7 @@ def _db_student_enrollments(student):
                 batch_id = int(r.get("batch_id")) if r.get("batch_id") is not None else None
             except (TypeError, ValueError):
                 batch_id = None
+
             enrolled_at = r.get("enrolled_at")
             normalized.append({
                 "course_id": course_id,
@@ -300,12 +296,16 @@ def _db_student_enrollments(student):
                 "status": r.get("status") or "Active",
                 "enrollment_date": enrolled_at.strftime("%Y-%m-%d") if hasattr(enrolled_at, "strftime") else enrolled_at,
             })
+
         return normalized
+
     except Exception:
-        # Keep the underlying reason in the console instead of silently hiding
-        # database/schema errors that can make enrolled courses disappear.
         app.logger.exception("Could not load normalized student enrollments")
         return []
+
+    finally:
+        if con is not None:
+            con.close()
 
 
 def student_enrollments(student):
@@ -858,6 +858,7 @@ DB_POOL = ConnectionPool(
     min_size=int(os.getenv("DB_POOL_MIN", "2")),
     max_size=int(os.getenv("DB_POOL_MAX", "20")),
     kwargs={"row_factory": dict_row},
+    check=ConnectionPool.check_connection,
     open=True,
 )
 
@@ -1440,7 +1441,14 @@ def role_login(role):
     if role not in {"admin","trainer","student"}: return redirect(url_for("login"))
     if request.method == "POST":
         identifier=request.form.get("username","").strip(); password=request.form.get("password","")
-        con=get_db(); u=con.execute("SELECT * FROM users WHERE role=? AND (username=? OR email=?)",(role,identifier,identifier)).fetchone(); con.close()
+        con = get_db()
+        try:
+            u = con.execute(
+                "SELECT * FROM users WHERE role=? AND (username=? OR email=?)",
+                (role, identifier, identifier)
+            ).fetchone()
+        finally:
+            con.close()
         if u and check_password_hash(u["password"],password):
             session["user_id"]=u["id"]; session["user_name"]=u["name"]; session["user_role"]=u["role"]; session["user_email"]=u["email"]; session["institution_id"]=u["institution_id"] or 1
             if role == "student":
@@ -1613,14 +1621,17 @@ def current_institution_id():
 def current_institution_name():
     """Return the institute name stored for the currently signed-in account."""
     iid = current_institution_id()
+    con = None
     try:
         con = get_db()
         row = con.execute("SELECT name FROM institutions WHERE id=?", (iid,)).fetchone()
-        con.close()
         if row and row["name"]:
             return row["name"]
     except Exception:
-        pass
+        app.logger.exception("Could not load current institution name")
+    finally:
+        if con is not None:
+            con.close()
     return "EduBridge Learning Institute"
 
 @app.context_processor
