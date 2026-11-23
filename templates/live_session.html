@@ -82,7 +82,7 @@ function heartbeat() {
   if (!trackingEnabled || leaving) return;
   post('/api/live-session/' + sessionId + '/heartbeat', {active: joined && !leaving})
     .then(d => { if (d.ok) { updateProgress(d); if (d.completed) { setStatus(d.eligible ? 'Attendance recorded' : 'Attendance not granted', d.eligible ? 'badge-green' : 'badge-red'); if (heartbeatTimer) clearInterval(heartbeatTimer); heartbeatTimer = null; } } })
-    .catch(err => { console.warn('Attendance heartbeat failed:', err); setStatus('Attendance sync issue', 'badge-red'); const notice=document.getElementById('browserNotice'); if(notice){ notice.style.display='flex'; document.getElementById('browserNoticeText').textContent='The meeting is open, but LMS attendance could not sync: '+(err.message || 'unknown error')+'. Keep this LMS tab open and rejoin from Sessions if needed.'; } });
+    .catch(err => { console.warn('Attendance heartbeat failed:', err); setStatus('Attendance sync issue', 'badge-red'); const notice=document.getElementById('browserNotice'); if(notice){ notice.style.display='flex'; document.getElementById('browserNoticeText').textContent='The meeting is open, but NexGen attendance could not sync: '+(err.message || 'unknown error')+'. Keep this NexGen tab open and rejoin from Sessions if needed.'; } });
 }
 function finishAndReturn() {
   if (redirectStarted) return;
@@ -153,10 +153,10 @@ async function startMeeting() {
     api.addEventListener('readyToClose', () => finishAndReturn());
     api.addEventListener('errorOccurred', e => {
       console.warn('Jitsi error:', e); setStatus('Meeting connection error', 'badge-red');
-      if (!joined) showFallback(window.isSecureContext ? 'Jitsi could not connect in this page. Check camera/microphone permission and internet, then retry.' : 'This LMS address is not a secure context (HTTP on a network IP), so the browser may block camera/microphone. Open http://localhost:5000 on this computer or enable HTTPS.');
+      if (!joined) showFallback(window.isSecureContext ? 'Jitsi could not connect in this page. Check camera/microphone permission and internet, then retry.' : 'This NexGen address is not a secure context (HTTP on a network IP), so the browser may block camera/microphone. Open http://localhost:5000 on this computer or enable HTTPS.');
     });
     if (startTimer) clearTimeout(startTimer);
-    startTimer = setTimeout(() => { if (!joined && !leaving) showFallback(window.isSecureContext ? 'Jitsi has not confirmed a connection yet. Allow camera/microphone and retry.' : 'This LMS address is not a secure context (HTTP on a network IP). Use http://localhost:5000 or HTTPS.'); }, 45000);
+    startTimer = setTimeout(() => { if (!joined && !leaving) showFallback(window.isSecureContext ? 'Jitsi has not confirmed a connection yet. Allow camera/microphone and retry.' : 'This NexGen address is not a secure context (HTTP on a network IP). Use http://localhost:5000 or HTTPS.'); }, 45000);
   } catch (e) {
     console.error(e); setStatus('Meeting could not start', 'badge-red'); showFallback(e.message || 'The embedded meeting failed to start.');
   }
@@ -165,7 +165,7 @@ if (trackingEnabled) {
   post('/api/live-session/' + sessionId + '/join', {}).then(d => {
     if (!d.ok) throw new Error(d.error || 'Unable to join tracked live session');
     startMeeting();
-  }).catch(err => { setStatus('Attendance service unavailable', 'badge-red'); document.getElementById('browserNotice').style.display='flex'; document.getElementById('browserNoticeText').textContent=(err.message || 'Could not connect to the attendance service.')+' Jitsi will still try to open on this page; attendance cannot be recorded until the LMS tracker connects.'; startMeeting(); });
+  }).catch(err => { setStatus('Attendance service unavailable', 'badge-red'); document.getElementById('browserNotice').style.display='flex'; document.getElementById('browserNoticeText').textContent=(err.message || 'Could not connect to the attendance service.')+' Jitsi will still try to open on this page; attendance cannot be recorded until the NexGen tracker connects.'; startMeeting(); });
 } else {
   startMeeting();
 }
