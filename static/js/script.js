@@ -1,5 +1,5 @@
 /* =========================================================
-   EduBridge LMS — script.js
+   NexGen — script.js
    Generic modal / CRUD / toast / search-filter engine
 ========================================================= */
 
@@ -12,12 +12,12 @@ function toggleSidebar(){
     document.getElementById('overlayBackdrop').classList.toggle('show');
   } else {
     shell.classList.toggle('sidebar-collapsed');
-    try { localStorage.setItem('edubridge-sidebar-collapsed', shell.classList.contains('sidebar-collapsed') ? '1' : '0'); } catch(e) {}
+    try { localStorage.setItem('nexgen-sidebar-collapsed', shell.classList.contains('sidebar-collapsed') ? '1' : '0'); } catch(e) {}
   }
 }
 document.addEventListener('DOMContentLoaded', function(){
   try {
-    if (localStorage.getItem('edubridge-sidebar-collapsed') === '1' && !window.matchMedia('(max-width: 900px)').matches) {
+    if (localStorage.getItem('nexgen-sidebar-collapsed') === '1' && !window.matchMedia('(max-width: 900px)').matches) {
       document.querySelector('.app-shell')?.classList.add('sidebar-collapsed');
     }
   } catch(e) {}

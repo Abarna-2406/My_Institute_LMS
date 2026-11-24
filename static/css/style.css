@@ -1,5 +1,6 @@
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,800;1,500;1,600&display=swap');
 /* =========================================================
-   EduBridge LMS — Stylesheet
+   NexGen — Stylesheet
    Theme: Deep Navy Blue / Blue / White / Light Gray
 ========================================================= */
 
@@ -1403,7 +1404,7 @@ html.dark-mode .text-muted { color:#aebed4 !important; }
 @media(max-width:520px){.student-calendar-day{min-height:72px;}.student-calendar-event span,.student-calendar-event small{display:none;}.student-calendar-event strong{font-size:9px;}.student-calendar-join{font-size:9px;}}
 
 
-/* Student live-session calendar: full day/week/month/list views, themed to EduBridge. */
+/* Student live-session calendar: full day/week/month/list views, themed to NexGen. */
 .student-calendar-wrap{padding:18px 20px 22px;}
 .student-calendar-toolbar{display:flex;align-items:center;justify-content:space-between;gap:16px;margin:0 0 18px;flex-wrap:wrap;}
 .student-calendar-heading,.student-calendar-actions,.student-calendar-arrows{display:flex;align-items:center;gap:10px;min-width:0;}
@@ -2080,7 +2081,7 @@ html.dark-mode .mc-day:not(.empty):hover{background:#241c4a;}
 }
 
 /* =========================================================
-   EduBridge LMS — Soft multi-colour theme (all roles)
+   NexGen LMS — Soft multi-colour theme (all roles)
    Inspired by the student dashboard reference: lavender canvas,
    pastel cards, and a richer blue/purple sidebar.
 ========================================================= */
@@ -2406,3 +2407,176 @@ html.dark-mode .gm-badge.locked span i { color: #68738a !important; }
 html.dark-mode .gm-badge.locked strong { color: #8792a8 !important; }
 html.dark-mode .gm-badge.locked small { color: #68738a !important; }
 html.dark-mode .gm-badge.earned span { filter: none !important; }
+
+/* NexGen brand mark */
+.logo-badge img{display:block;width:100%;height:100%;object-fit:contain;}
+html body .auth-brand .logo-badge.brand-mark,
+html body .sidebar-brand .logo-badge.brand-mark{
+  background:#fff !important;padding:5px;overflow:hidden;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+  border:1px solid rgba(124,77,255,.18) !important;
+  box-shadow:0 8px 22px rgba(46,16,101,.20) !important;
+}
+html body .brand-text{display:flex;flex-direction:column;min-width:0;}
+html body .brand-name{
+  font-family:'Playfair Display',Georgia,'Times New Roman',serif !important;
+  font-weight:800 !important;letter-spacing:.01em;color:#22094f !important;line-height:1.05;
+}
+html body .brand-motto{
+  font-family:'Playfair Display',Georgia,'Times New Roman',serif !important;
+  font-style:italic;font-weight:600 !important;letter-spacing:.02em;color:#5b34c4 !important;
+}
+/* Auth pages */
+html body .auth-brand{gap:14px;align-items:center;}
+html body .auth-brand .logo-badge.brand-mark{width:64px;height:64px;border-radius:18px;}
+html body .auth-brand h1.brand-name{font-size:30px;margin:0;}
+html body .auth-brand .brand-motto{display:flex;align-items:center;gap:8px;font-size:13.5px;margin-top:5px;white-space:nowrap;}
+html body .auth-brand .brand-motto::before{content:"";width:18px;height:1.5px;background:currentColor;opacity:.55;flex-shrink:0;}
+html.dark-mode body .auth-brand h1.brand-name{color:#f3eeff !important;}
+html.dark-mode body .auth-brand .brand-motto{color:#c4b5fd !important;}
+/* Sidebar rail */
+html body .app-shell .sidebar .sidebar-brand{gap:9px;padding:18px 6px 14px;}
+html body .app-shell .sidebar .sidebar-brand .logo-badge.brand-mark{width:58px;height:58px;border-radius:17px;}
+html body .app-shell .sidebar .sidebar-brand .brand-text{align-items:center;gap:4px;text-align:center;}
+html body .app-shell .sidebar .sidebar-brand strong.brand-name{
+  display:block !important;font-size:18px !important;color:#fff !important;
+  max-width:none;-webkit-line-clamp:unset;overflow:visible;text-shadow:0 2px 8px rgba(10,6,40,.25);
+}
+html body .app-shell .sidebar .sidebar-brand small.brand-motto{
+  display:block !important;font-size:9.5px !important;line-height:1.3;max-width:96px;color:#ece6ff !important;
+}
+html body .app-shell .sidebar .sidebar-brand .logo-badge.inst-mark i{font-size:24px;color:#5b34c4;}
+.inst-mark [hidden],.inst-logo-modal[hidden],.ilm-preview [hidden],.reg-logo-preview[hidden],.ilm-actions [hidden]{display:none !important;}
+html body .app-shell .sidebar .sidebar-brand .logo-badge.inst-mark{position:relative;}
+html body .app-shell .sidebar .sidebar-brand .logo-badge.inst-mark img{border-radius:12px;}
+.inst-logo-btn{cursor:pointer;font:inherit;transition:transform .2s ease,box-shadow .2s ease;}
+.inst-logo-btn:hover{transform:translateY(-2px);}
+.inst-logo-btn:focus-visible{outline:3px solid #c4b5fd;outline-offset:3px;}
+html body .app-shell .sidebar .sidebar-brand .inst-logo-btn .inst-cam{position:absolute;right:-6px;bottom:-6px;width:24px;height:24px;border-radius:50%;
+  background:#7c4dff;border:2px solid #fff;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 10px rgba(46,16,101,.3);}
+html body .app-shell .sidebar .sidebar-brand .inst-logo-btn .inst-cam i{font-size:10px;color:#fff;}
+.inst-logo-modal{position:fixed;inset:0;z-index:9000;display:flex;align-items:center;justify-content:center;padding:20px;
+  background:rgba(15,10,40,.55);backdrop-filter:blur(6px);animation:ilmFade .2s ease;}
+.ilm-card{width:100%;max-width:380px;background:#fff;border-radius:22px;padding:22px 24px 24px;text-align:center;
+  box-shadow:0 30px 70px rgba(15,10,40,.35);animation:ilmUp .25s cubic-bezier(.2,.8,.2,1);}
+.ilm-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;}
+.ilm-head h3{margin:0;font-size:17px;color:#1e1b4b;}
+.ilm-close{border:0;background:#f1edff;color:#4b2bc2;width:34px;height:34px;border-radius:50%;cursor:pointer;}
+.ilm-preview{position:relative;display:flex;align-items:center;justify-content:center;width:180px;height:180px;margin:0 auto;border-radius:50%;
+  background:#f5f2ff;border:3px solid #fff;box-shadow:0 0 0 2px #d9ccff,0 14px 34px rgba(46,16,101,.18);overflow:hidden;cursor:pointer;}
+.ilm-preview img{width:100%;height:100%;object-fit:contain;background:#fff;padding:14px;}
+.ilm-preview>i{font-size:58px;color:#7c4dff;}
+.ilm-overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;color:#fff;
+  background:rgba(20,10,50,.55);opacity:0;transition:opacity .2s ease;}
+.ilm-overlay i{font-size:26px;}
+.ilm-overlay small{font-size:12px;font-weight:600;letter-spacing:.03em;text-transform:uppercase;}
+.ilm-preview:hover .ilm-overlay{opacity:1;}
+.ilm-name{display:block;margin-top:16px;font-size:16px;color:#1e1b4b;}
+.ilm-hint{margin:6px 0 18px;font-size:12.5px;color:#6b7280;}
+.ilm-hint.err{color:#dc2626;font-weight:600;}
+.ilm-actions{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;}
+.reg-logo-preview{display:block;margin-top:8px;width:72px;height:72px;object-fit:contain;border-radius:14px;background:#fff;
+  border:1px solid rgba(124,77,255,.25);padding:6px;}
+html.dark-mode .ilm-card{background:#17142f;}
+html.dark-mode .ilm-head h3,html.dark-mode .ilm-name{color:#f3eeff;}
+html.dark-mode .ilm-hint{color:#a5a3c4;}
+html.dark-mode .ilm-close{background:#2a2550;color:#d8ccff;}
+html.dark-mode .ilm-preview{background:#221d45;box-shadow:0 0 0 2px #3d3574,0 14px 34px rgba(0,0,0,.4);border-color:#17142f;}
+@keyframes ilmFade{from{opacity:0;}to{opacity:1;}}
+@keyframes ilmUp{from{opacity:0;transform:translateY(14px) scale(.97);}to{opacity:1;transform:none;}}
+/* Home: dark-mode contrast for exam badges and action buttons */
+html.dark-mode .hm-tag{background:rgba(239,71,111,.18) !important;color:#ff9fb6 !important;border:1px solid rgba(239,71,111,.35);}
+html.dark-mode .hm-tag.g{background:rgba(31,169,113,.18) !important;color:#6ee7b7 !important;border-color:rgba(31,169,113,.4);}
+html.dark-mode .hm-btn{background:#7c4dff !important;color:#fff !important;}
+html.dark-mode .hm-btn:hover{background:#6a3cf0 !important;}
+html.dark-mode .hm-card.a-promo .hm-btn,html.dark-mode .gm-streak .hm-btn{background:#fff !important;color:#4b2bc2 !important;}
+html body .app-shell .sidebar .sidebar-brand strong.inst-name{font-size:14px !important;line-height:1.2;max-width:96px;overflow-wrap:anywhere;}
+/* NexGen branded loading screen */
+.ng-loader{position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;
+  background:radial-gradient(circle at 50% 40%,#ffffff 0%,#f4efff 55%,#e9e0ff 100%);
+  transition:opacity .5s ease,visibility .5s ease;}
+.ng-loader.is-hidden{opacity:0;visibility:hidden;pointer-events:none;}
+.ng-loader-inner{display:flex;flex-direction:column;align-items:center;text-align:center;}
+.ng-loader-mark{width:112px;height:112px;border-radius:30px;background:#fff;padding:10px;
+  border:1px solid rgba(124,77,255,.16);box-shadow:0 18px 44px rgba(46,16,101,.18);
+  opacity:0;transform:translateY(10px) scale(.92);animation:ngIn .7s cubic-bezier(.2,.8,.2,1) .05s forwards,ngPulse 2.4s ease-in-out 1s infinite;}
+.ng-loader-mark img{width:100%;height:100%;object-fit:contain;display:block;}
+.ng-loader-name{margin-top:20px;font-family:'Playfair Display',Georgia,'Times New Roman',serif;font-weight:800;font-size:34px;
+  color:#22094f;letter-spacing:.01em;opacity:0;animation:ngIn .7s ease .25s forwards;}
+.ng-loader-motto{margin-top:6px;font-family:'Playfair Display',Georgia,'Times New Roman',serif;font-style:italic;font-weight:600;
+  font-size:14px;color:#5b34c4;letter-spacing:.03em;opacity:0;animation:ngIn .7s ease .45s forwards;}
+.ng-loader-bar{margin-top:22px;width:140px;height:3px;border-radius:3px;background:rgba(124,77,255,.15);overflow:hidden;opacity:0;animation:ngIn .5s ease .6s forwards;}
+.ng-loader-bar span{display:block;width:40%;height:100%;border-radius:3px;background:linear-gradient(90deg,#7c4dff,#4cc9f0);animation:ngBar 1.2s ease-in-out infinite;}
+@keyframes ngIn{to{opacity:1;transform:none;}}
+@keyframes ngPulse{0%,100%{box-shadow:0 18px 44px rgba(46,16,101,.18);}50%{box-shadow:0 18px 54px rgba(124,77,255,.34);}}
+@keyframes ngBar{0%{transform:translateX(-110%);}100%{transform:translateX(260%);}}
+html.dark-mode .ng-loader{background:radial-gradient(circle at 50% 40%,#1d1645 0%,#110d2b 60%,#0a0819 100%);}
+html.dark-mode .ng-loader-name{color:#f3eeff;}
+html.dark-mode .ng-loader-motto{color:#c4b5fd;}
+@media (prefers-reduced-motion:reduce){.ng-loader-mark,.ng-loader-name,.ng-loader-motto,.ng-loader-bar,.ng-loader-bar span{animation:none;opacity:1;transform:none;}}
+
+
+/* Topbar avatar shows the institute logo */
+[data-inst-logo-slot] [hidden]{display:none !important;}
+html body .topbar-user .avatar.inst-avatar{overflow:hidden;flex-shrink:0;width:40px;height:40px;}
+html body .topbar-user .avatar.inst-avatar img{width:100%;height:100%;object-fit:contain;background:#fff;padding:3px;border-radius:50%;}
+html body .topbar-user .avatar.inst-avatar:has(img:not([hidden])){background:#fff !important;box-shadow:0 0 0 2px #d9ccff,0 4px 12px rgba(46,16,101,.18);}
+/* User dropdown: institute card + code */
+html body .user-dropdown{min-width:260px;border-radius:16px;padding:6px;}
+.user-dropdown .ud-head{display:flex;align-items:center;gap:12px;padding:12px 10px 10px;cursor:default;}
+.user-dropdown .ud-logo{width:46px;height:46px;border-radius:14px;background:#f5f2ff;border:1px solid #e4dcff;display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0;}
+.user-dropdown .ud-logo img{width:100%;height:100%;object-fit:contain;background:#fff;padding:4px;}
+.user-dropdown .ud-logo i{color:#7c4dff;font-size:20px;}
+.user-dropdown .ud-meta{min-width:0;line-height:1.25;}
+.user-dropdown .ud-meta strong{display:block;font-size:14px;color:#1e1b4b;overflow-wrap:anywhere;}
+.user-dropdown .ud-meta span{font-size:12px;color:#6b7280;}
+.user-dropdown .ud-code{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:2px 6px 8px;padding:10px 12px;border-radius:12px;
+  background:linear-gradient(135deg,#f3eeff,#e8f6ff);border:1px dashed #b9a6ff;cursor:default;}
+.user-dropdown .ud-code small{display:block;font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:#6b5bb5;font-weight:700;}
+.user-dropdown .ud-code b{font-size:16px;letter-spacing:.06em;color:#22094f;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;}
+.user-dropdown .ud-copy{border:0;width:34px;height:34px;border-radius:10px;background:#7c4dff;color:#fff;cursor:pointer;transition:transform .15s ease,background-color .15s ease;}
+.user-dropdown .ud-copy:hover{transform:translateY(-1px);background:#6a3cf0;}
+.user-dropdown .ud-copy.copied{background:#16a34a;}
+html body .user-dropdown a{border-radius:10px;}
+html.dark-mode .user-dropdown .ud-meta strong{color:#f3eeff;}
+html.dark-mode .user-dropdown .ud-meta span{color:#a5a3c4;}
+html.dark-mode .user-dropdown .ud-logo{background:#221d45;border-color:#3d3574;}
+html.dark-mode .user-dropdown .ud-code{background:linear-gradient(135deg,#221d45,#13263f);border-color:#5b4bb0;}
+html.dark-mode .user-dropdown .ud-code small{color:#b9a6ff;}
+html.dark-mode .user-dropdown .ud-code b{color:#f3eeff;}
+
+/* Colourful professional sidebar rail */
+html body .app-shell .sidebar{
+  background:
+    radial-gradient(120% 40% at 0% 0%,rgba(255,255,255,.16) 0%,transparent 60%),
+    linear-gradient(180deg,#3a1c94 0%,#5a2fd6 34%,#2f5fd0 68%,#0e8fb8 100%) !important;
+  box-shadow:0 18px 40px rgba(58,28,148,.35),inset 0 0 0 1px rgba(255,255,255,.12) !important;
+}
+html body .app-shell .sidebar .sidebar-brand{background:rgba(255,255,255,.08);border-bottom:1px solid rgba(255,255,255,.16) !important;}
+html body .app-shell .sidebar .sidebar-nav .nav-section-title{background:linear-gradient(90deg,transparent,rgba(255,255,255,.35),transparent) !important;}
+html body .app-shell .sidebar .sidebar-nav > a{color:#eef2ff !important;}
+html body .app-shell .sidebar .sidebar-nav > a .ic{color:#fff !important;box-shadow:0 6px 14px rgba(10,6,40,.22);border:1px solid rgba(255,255,255,.22);}
+html body .app-shell .sidebar .sidebar-nav > a:nth-of-type(8n+1) .ic{background:linear-gradient(135deg,#ff8a65,#ff5277);}
+html body .app-shell .sidebar .sidebar-nav > a:nth-of-type(8n+2) .ic{background:linear-gradient(135deg,#ffd166,#f59e0b);}
+html body .app-shell .sidebar .sidebar-nav > a:nth-of-type(8n+3) .ic{background:linear-gradient(135deg,#34d399,#059669);}
+html body .app-shell .sidebar .sidebar-nav > a:nth-of-type(8n+4) .ic{background:linear-gradient(135deg,#38bdf8,#2563eb);}
+html body .app-shell .sidebar .sidebar-nav > a:nth-of-type(8n+5) .ic{background:linear-gradient(135deg,#f472b6,#c026d3);}
+html body .app-shell .sidebar .sidebar-nav > a:nth-of-type(8n+6) .ic{background:linear-gradient(135deg,#a78bfa,#6d28d9);}
+html body .app-shell .sidebar .sidebar-nav > a:nth-of-type(8n+7) .ic{background:linear-gradient(135deg,#2dd4bf,#0d9488);}
+html body .app-shell .sidebar .sidebar-nav > a:nth-of-type(8n+8) .ic{background:linear-gradient(135deg,#fb923c,#ea580c);}
+html.dark-mode body .app-shell .sidebar .sidebar-nav > a:not(.active):nth-of-type(8n+1) .ic{background:linear-gradient(135deg,#ff8a65,#ff5277) !important;}
+html.dark-mode body .app-shell .sidebar .sidebar-nav > a:not(.active):nth-of-type(8n+2) .ic{background:linear-gradient(135deg,#ffd166,#f59e0b) !important;}
+html.dark-mode body .app-shell .sidebar .sidebar-nav > a:not(.active):nth-of-type(8n+3) .ic{background:linear-gradient(135deg,#34d399,#059669) !important;}
+html.dark-mode body .app-shell .sidebar .sidebar-nav > a:not(.active):nth-of-type(8n+4) .ic{background:linear-gradient(135deg,#38bdf8,#2563eb) !important;}
+html.dark-mode body .app-shell .sidebar .sidebar-nav > a:not(.active):nth-of-type(8n+5) .ic{background:linear-gradient(135deg,#f472b6,#c026d3) !important;}
+html.dark-mode body .app-shell .sidebar .sidebar-nav > a:not(.active):nth-of-type(8n+6) .ic{background:linear-gradient(135deg,#a78bfa,#6d28d9) !important;}
+html.dark-mode body .app-shell .sidebar .sidebar-nav > a:not(.active):nth-of-type(8n+7) .ic{background:linear-gradient(135deg,#2dd4bf,#0d9488) !important;}
+html.dark-mode body .app-shell .sidebar .sidebar-nav > a:not(.active):nth-of-type(8n+8) .ic{background:linear-gradient(135deg,#fb923c,#ea580c) !important;}
+html body .app-shell .sidebar .sidebar-nav > a:hover .ic{transform:translateY(-2px) scale(1.04);filter:brightness(1.08);}
+html body .app-shell .sidebar .sidebar-nav > a.active{background:rgba(255,255,255,.16) !important;box-shadow:inset 0 0 0 1px rgba(255,255,255,.25) !important;}
+html body .app-shell .sidebar .sidebar-nav > a.active .ic{background:#fff !important;color:#5a2fd6 !important;box-shadow:0 8px 18px rgba(10,6,40,.3);}
+html.dark-mode body .app-shell .sidebar{
+  background:radial-gradient(120% 40% at 0% 0%,rgba(124,77,255,.22) 0%,transparent 60%),linear-gradient(180deg,#1c1147 0%,#241a63 40%,#13295a 75%,#0a3446 100%) !important;
+}
+html.dark-mode body .app-shell .sidebar .sidebar-nav > a.active .ic{color:#3a1c94 !important;}
+

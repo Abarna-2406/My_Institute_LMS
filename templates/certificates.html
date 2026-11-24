@@ -4,18 +4,38 @@
 {% block page_crumb %}View and manage course completion certificates{% endblock %}
 {% block content %}
 {% if session.get('user_role')=='admin' %}
-<div class="card cert-create-card">
-  <div class="card-header"><h3><i class="fa-solid fa-wand-magic-sparkles"></i> Generate certificate</h3><span class="badge badge-green">Admin only</span></div>
+<div class="card" style="margin-bottom:20px">
+  <div class="card-header"><h3><i class="fa-solid fa-image"></i> Institute logo &amp; signature</h3><span class="badge badge-blue">Printed on every certificate</span></div>
   <div class="card-body">
-    <p class="cell-muted">Choose a student, their enrolled course, and a template. The certificate name, course, issue date, certificate ID and duration are filled automatically.</p>
-    <form method="post" enctype="multipart/form-data" action="{{ url_for('issue_certificate') }}" class="form-grid">
-      <div class="form-group"><label>Student</label><select class="form-control" name="student_id" id="certStudent" required onchange="filterCertCourses()"><option value="">Select student</option>{% for s in students %}<option value="{{ s.id }}" data-courses="{{ student_course_ids(s)|join(',') }}">{{ s.name }} — {{ s.email }}</option>{% endfor %}</select></div>
-      <div class="form-group"><label>Course</label><select class="form-control" name="course_id" id="certCourse" required><option value="">Select enrolled course</option>{% for c in courses %}<option value="{{ c.id }}" data-duration="{{ c.duration }}">{{ c.name }} · {{ c.duration }}</option>{% endfor %}</select></div>
-      <div class="form-group"><label>Certificate template</label><select class="form-control" name="template"><option value="classic">Classic navy & gold</option><option value="modern">Modern minimal</option><option value="elegant">Elegant academic</option></select></div>
-      <div class="form-group"><label>Course duration</label><input id="certDuration" class="form-control" readonly placeholder="Auto-filled from course"></div>
-      <div class="form-group"><label>Certificate logo (PNG/JPG/SVG)</label><input class="form-control" type="file" name="certificate_logo" accept=".png,.jpg,.jpeg,.svg,image/png,image/jpeg,image/svg+xml"><small class="cell-muted">Embedded into the generated PDF.</small></div>
-      <div class="form-group"><label>Authorized signature (PNG/JPG/SVG)</label><input class="form-control" type="file" name="certificate_signature" accept=".png,.jpg,.jpeg,.svg,image/png,image/jpeg,image/svg+xml"><small class="cell-muted">Embedded into the generated PDF.</small></div>
-      <div class="full"><button class="btn btn-primary" type="submit"><i class="fa-solid fa-certificate"></i> Generate certificate</button></div>
+    <form method="post" enctype="multipart/form-data" action="{{ url_for('update_institution_branding') }}" class="cert-brand" data-testid="branding-form">
+      <div><div class="cert-brand-slot" data-testid="branding-logo-preview">{% if branding.logo_url %}<img src="{{ branding.logo_url }}" alt="Institute logo">{% else %}<span class="cell-muted">No logo</span>{% endif %}</div><small class="cell-muted">Logo</small></div>
+      <div><div class="cert-brand-slot" data-testid="branding-signature-preview">{% if branding.signature_url %}<img src="{{ branding.signature_url }}" alt="Signature">{% else %}<span class="cell-muted">No signature</span>{% endif %}</div><small class="cell-muted">Authorized signature</small></div>
+      <div class="form-group" style="min-width:220px"><label>Change logo (PNG/JPG/SVG)</label><input class="form-control" type="file" name="institution_logo" data-testid="branding-logo-input" accept=".png,.jpg,.jpeg,.svg"></div>
+      <div class="form-group" style="min-width:220px"><label>Change signature (PNG/JPG/SVG)</label><input class="form-control" type="file" name="institution_signature" data-testid="branding-signature-input" accept=".png,.jpg,.jpeg,.svg"></div>
+      <div><button class="btn btn-outline" type="submit" data-testid="branding-save-btn"><i class="fa-solid fa-upload"></i> Save branding</button></div>
+    </form>
+  </div>
+</div>
+
+<div class="card cert-create-card">
+  <div class="card-header"><h3><i class="fa-solid fa-wand-magic-sparkles"></i> Generate certificates</h3><span class="badge badge-green">Admin only</span></div>
+  <div class="card-body">
+    <p class="cell-muted">Pick a course to list every enrolled student. Students who completed the course are ticked automatically, so you can issue all their certificates in one click. Course dates come from each student's batch; the grade is worked out from the assessment score ({{ grade_scale }}), or you can choose A–D yourself per student.</p>
+    <form method="post" action="{{ url_for('issue_certificate') }}" id="certForm" data-testid="certificate-form">
+      <div class="form-grid">
+        <div class="form-group"><label>Course</label><select class="form-control" name="course_id" id="certCourse" data-testid="certificate-course-select" required onchange="loadCertStudents()"><option value="">Select course</option>{% for c in courses %}<option value="{{ c.id }}">{{ c.name }} · {{ c.duration }}</option>{% endfor %}</select></div>
+        <div class="form-group"><label>Certificate template</label><select class="form-control" name="template" data-testid="certificate-template-select"><option value="classic">Classic navy &amp; gold</option><option value="modern">Modern minimal</option><option value="elegant">Elegant academic</option></select></div>
+        <div class="form-group"><label>Course start date (optional override)</label><input class="form-control" type="date" name="start_date" data-testid="certificate-start-override"><small class="cell-muted">Leave blank to use each student's batch start date.</small></div>
+        <div class="form-group"><label>Course end date (optional override)</label><input class="form-control" type="date" name="end_date" data-testid="certificate-end-override"><small class="cell-muted">Leave blank to use each student's batch end date.</small></div>
+      </div>
+      <div class="cert-toolbar" id="certToolbar" style="display:none">
+        <button class="btn btn-outline btn-sm" type="button" data-testid="certificate-select-completed" onclick="selectCert('completed')"><i class="fa-solid fa-check-double"></i> Select all completed</button>
+        <button class="btn btn-outline btn-sm" type="button" data-testid="certificate-select-all" onclick="selectCert('all')">Select all</button>
+        <button class="btn btn-outline btn-sm" type="button" data-testid="certificate-select-none" onclick="selectCert('none')">Clear</button>
+      </div>
+      <div class="table-wrap"><table class="data-table cert-table"><thead><tr><th></th><th>Student</th><th>Batch</th><th>Course period</th><th>Progress</th><th>Score</th><th>Grade on certificate</th><th>Status</th></tr></thead>
+        <tbody id="certRows" data-testid="certificate-student-rows"><tr><td colspan="8" class="cell-muted">Select a course to see its students.</td></tr></tbody></table></div>
+      <div style="margin-top:14px"><button class="btn btn-primary" type="submit" id="certSubmit" data-testid="certificate-generate-btn" disabled><i class="fa-solid fa-certificate"></i> Generate certificates</button></div>
     </form>
   </div>
 </div>
@@ -24,13 +44,13 @@
   <div class="card-header"><h3>{{ 'My certificates' if student_view else 'Certificate library' }}</h3><span class="badge badge-blue">{{ certificates|length }}</span></div>
   <div class="card-body cert-list">
     {% for cert in certificates %}
-    <div class="cert-item">
+    <div class="cert-item" data-testid="certificate-item-{{ cert.id }}">
       <div class="cert-icon"><i class="fa-solid fa-award"></i></div>
-      <div class="cert-meta"><strong>{{ cert.course_name }}</strong><span>{{ cert.student_name or '' }} · {{ cert.duration or '' }}</span><small>{{ cert.certificate_number }} · Issued {{ cert.issued_at }}</small></div>
+      <div class="cert-meta"><strong>{{ cert.course_name }}</strong><span>{{ cert.student_name or '' }} · {{ cert.duration or '' }}{% if cert.grade %} · Grade {{ cert.grade }}{% endif %}{% if cert.score_pct is not none %} ({{ cert.score_pct }}%){% endif %}</span><small>{{ cert.certificate_number }} · {% if cert.course_start %}{{ cert.course_start }} to {{ cert.course_end }} · {% endif %}Issued {{ cert.issued_at }}</small></div>
       {% if student_view %}
-        <a class="btn btn-outline" href="{{ url_for('download_certificate',certificate_id=cert.id) }}"><i class="fa-solid fa-file-pdf"></i> Download PDF</a>
+        <a class="btn btn-outline" data-testid="certificate-download-{{ cert.id }}" href="{{ url_for('download_certificate',certificate_id=cert.id) }}"><i class="fa-solid fa-file-pdf"></i> Download PDF</a>
       {% else %}
-        <button class="btn btn-outline" type="button" onclick="openCertificatePreview('{{ url_for('view_certificate',certificate_id=cert.id) }}')"><i class="fa-solid fa-eye"></i> View</button>
+        <button class="btn btn-outline" type="button" data-testid="certificate-view-{{ cert.id }}" onclick="openCertificatePreview('{{ url_for('view_certificate',certificate_id=cert.id) }}')"><i class="fa-solid fa-eye"></i> View</button>
       {% endif %}
     </div>
     {% else %}<p class="empty-state">No certificates have been issued yet.</p>{% endfor %}
@@ -47,8 +67,27 @@
 {% endblock %}
 {% block scripts %}
 <script>
-function filterCertCourses(){const s=document.getElementById('certStudent'),c=document.getElementById('certCourse');if(!s||!c)return;const allowed=(s.selectedOptions[0]?.dataset.courses||'').split(',');[...c.options].forEach((o,i)=>{if(i)o.hidden=!allowed.includes(o.value);});c.value='';document.getElementById('certDuration').value='';}
-document.getElementById('certCourse')?.addEventListener('change',function(){document.getElementById('certDuration').value=this.selectedOptions[0]?.dataset.duration||'';});
+function escC(t){return String(t==null?'':t).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+function updateCertCount(){var n=document.querySelectorAll('.cert-pick:checked').length,b=document.getElementById('certSubmit');if(!b)return;b.disabled=!n;b.innerHTML='<i class="fa-solid fa-certificate"></i> Generate '+(n?n+' ':'')+'certificate'+(n===1?'':'s');}
+function selectCert(mode){document.querySelectorAll('.cert-pick').forEach(function(c){c.checked=mode==='all'||(mode==='completed'&&c.dataset.completed==='1'&&c.dataset.issued!=='1');});updateCertCount();}
+function loadCertStudents(){
+  var cid=document.getElementById('certCourse').value,body=document.getElementById('certRows'),tb=document.getElementById('certToolbar');
+  if(!cid){body.innerHTML='<tr><td colspan="8" class="cell-muted">Select a course to see its students.</td></tr>';tb.style.display='none';updateCertCount();return;}
+  body.innerHTML='<tr><td colspan="8" class="cell-muted"><i class="fa-solid fa-spinner fa-spin"></i> Loading students...</td></tr>';
+  fetch('/api/certificates/course/'+cid+'/students').then(function(r){return r.json();}).then(function(d){
+    var rows=d.students||[];tb.style.display=rows.length?'flex':'none';
+    if(!rows.length){body.innerHTML='<tr><td colspan="8" class="cell-muted">No students are enrolled in this course yet.</td></tr>';updateCertCount();return;}
+    body.innerHTML=rows.map(function(s){
+      var auto=s.auto_grade?('Auto: '+s.auto_grade+' ('+s.score+'%)'):'Auto: no score yet';
+      var status=s.has_certificate?'<span class="cert-chip issued">Already issued</span> ':'';
+      status+=s.completed?'<span class="cert-chip done">Completed</span>':'<span class="cert-chip prog">In progress</span>';
+      return '<tr data-testid="certificate-row-'+s.student_id+'"><td><input type="checkbox" class="cert-pick" name="student_ids" value="'+s.student_id+'" data-completed="'+(s.completed?1:0)+'" data-issued="'+(s.has_certificate?1:0)+'" data-testid="certificate-pick-'+s.student_id+'" '+(s.completed&&!s.has_certificate?'checked':'')+' onchange="updateCertCount()"></td>'+
+        '<td><strong>'+escC(s.name)+'</strong><div class="cell-muted">'+escC(s.email)+'</div></td><td>'+escC(s.batch||'—')+'</td>'+
+        '<td>'+(s.start_date?escC(s.start_date)+' to '+escC(s.end_date):'—')+'</td><td>'+s.progress+'%</td><td>'+(s.score==null?'—':s.score+'%')+'</td>'+
+        '<td><select class="form-control" name="grade_'+s.student_id+'" data-testid="certificate-grade-'+s.student_id+'"><option value="auto">'+auto+'</option><option>A</option><option>B</option><option>C</option><option>D</option></select></td><td>'+status+'</td></tr>';
+    }).join('');updateCertCount();
+  }).catch(function(){body.innerHTML='<tr><td colspan="8" class="cell-muted">Could not load students. Please try again.</td></tr>';});
+}
 function openCertificatePreview(url){const frame=document.getElementById('certificatePreviewFrame');if(!frame)return;frame.src=url+'#toolbar=0&navpanes=0';openModal('certificatePreviewModal');}
 function closeCertificatePreview(){const frame=document.getElementById('certificatePreviewFrame');if(frame)frame.src='about:blank';closeModal('certificatePreviewModal');}
 </script>

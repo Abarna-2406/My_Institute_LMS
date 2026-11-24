@@ -7,23 +7,30 @@
 {% set av_colors = ['#7c4dff','#1c9ad6','#f08c1b','#1fa971','#ef476f'] %}
 
 <div class="hm-welcome">
-  <h1>Welcome.</h1>
-  <p>Navigate the future of education with {{ institution_name }}.</p>
+  <h1>Welcome, {{ (session.get('user_name') or 'there').split(' ')[0] }}.</h1>
 </div>
 
 <!-- TOP STAT CARDS -->
-<div class="hm-stats">
+<div class="hm-stats auto">
   <a class="hm-stat s1" href="{{ url_for('students_page') }}">
     <div><small>Students</small><strong>{{ '{:,}'.format(stats.students) }}</strong><em>{{ stats.active_students }} active</em></div>
     <span class="hm-ic"><i class="fa-solid fa-user-graduate"></i></span>
   </a>
   <a class="hm-stat s2" href="{{ url_for('trainers_page') }}">
-    <div><small>Trainers</small><strong>{{ '{:,}'.format(stats.trainers) }}</strong><em>Teaching staff</em></div>
+    <div><small>Trainers</small><strong>{{ '{:,}'.format(stats.trainers) }}</strong><em>{{ stats.active_trainers }} active</em></div>
     <span class="hm-ic"><i class="fa-solid fa-chalkboard-user"></i></span>
   </a>
   <a class="hm-stat s3" href="{{ url_for('courses_page') }}">
-    <div><small>Courses</small><strong>{{ '{:,}'.format(stats.courses) }}</strong><em>{{ stats.batches }} batches</em></div>
+    <div><small>Courses</small><strong>{{ '{:,}'.format(stats.courses) }}</strong><em>{{ stats.active_courses }} active</em></div>
     <span class="hm-ic"><i class="fa-solid fa-book-open"></i></span>
+  </a>
+  <a class="hm-stat s1" href="{{ url_for('batches_page') }}" data-testid="home-stat-batches">
+    <div><small>Batches</small><strong>{{ '{:,}'.format(stats.batches) }}</strong><em>{{ stats.ongoing_batches }} ongoing</em></div>
+    <span class="hm-ic"><i class="fa-solid fa-layer-group"></i></span>
+  </a>
+  <a class="hm-stat s2" href="{{ url_for('attendance_page') }}" data-testid="home-stat-attendance">
+    <div><small>Attendance</small><strong>{{ stats.attendance_pct }}%</strong><em>Overall</em></div>
+    <span class="hm-ic"><i class="fa-solid fa-clipboard-check"></i></span>
   </a>
   <a class="hm-stat s4" href="{{ url_for('payments_page') }}">
     <div><small>Payments Received</small><strong>₹{{ '{:,}'.format(stats.revenue|int) }}</strong><em>{{ stats.pending }} pending</em></div>
@@ -128,15 +135,7 @@
   <!-- Notifications -->
   <div class="hm-card a-notif">
     <div class="hm-head"><h3>Notifications</h3><a href="{{ url_for('announcements_page') }}">View All</a></div>
-    {% for a in notifications %}
-    <div class="hm-note-li">
-      <span class="n-ic {{ 'high' if a.priority == 'High' }}"><i class="fa-solid {{ 'fa-triangle-exclamation' if a.priority == 'High' else 'fa-bullhorn' }}"></i></span>
-      <div class="n-t"><strong>{{ a.title }}</strong><span>{{ a.message }}</span></div>
-      <time>{{ a.date }}</time>
-    </div>
-    {% else %}
-    <div class="hm-empty">No announcements.</div>
-    {% endfor %}
+    {% with items=notifications %}{% include "_announcement_ticker.html" %}{% endwith %}
   </div>
 
   <!-- Calendar -->
